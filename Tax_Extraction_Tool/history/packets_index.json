@@ -1,0 +1,38 @@
+[
+  {
+    "id": "rivera_tax_packet_2025_1793110071",
+    "filename": "Rivera_Tax_Packet_2025.pdf",
+    "file_path": "C:\\Users\\Zen\\OneDrive\\Documents\\Drake Automation\\Drake-Automation\\Tax_Extraction_Tool\\uploads\\Rivera_Tax_Packet_2025.pdf",
+    "created_at": "Oct 27, 2026 - 07:37 PM",
+    "timestamp": 1793110071,
+    "taxpayer_name": "MARCUS D RIVERA",
+    "total_modules": 5,
+    "total_pages": 6,
+    "category_counts": {
+      "W-2 (Wages & Salaries)": 2,
+      "Interest Income (1099-INT)": 1,
+      "Mortgage Interest (Form 1098)": 1,
+      "IRA Contribution Info (Form 5498)": 1
+    }
+  },
+  {
+    "id": "weaver_cummings_2025_tax_packet_1793109425",
+    "filename": "Weaver-Cummings_2025_Tax_Packet.pdf",
+    "file_path": "C:\\Users\\Zen\\OneDrive\\Documents\\Drake Automation\\Drake-Automation\\Tax_Extraction_Tool\\uploads\\Weaver-Cummings_2025_Tax_Packet.pdf",
+    "created_at": "Oct 27, 2026 - 07:27 PM",
+    "timestamp": 1793109425,
+    "taxpayer_name": "ZARA OSEI WEAVER-CUMMINGS",
+    "total_modules": 17,
+    "total_pages": 70,
+    "category_counts": {
+      "W-2 (Wages & Salaries)": 1,
+      "Social Security Benefits": 1,
+      "Pensions & Annuities (1099-R)": 3,
+      "Interest Income (1099-INT)": 5,
+      "Mortgage Interest (Form 1098)": 1,
+      "IRA Contribution Info (Form 5498)": 2,
+      "Dividend Income (1099-DIV)": 2,
+      "Capital Gains & Losses (1099-B)": 2
+    }
+  }
+]

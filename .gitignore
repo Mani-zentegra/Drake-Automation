@@ -1,0 +1,33 @@
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Large Executables & Distributions
+*.exe
+*.dll
+*.zip
+*.tar.gz
+dist/
+build/
+*.spec
+
+# Virtual Environments
+venv/
+env/
+ENV/
+
+# Temporary / Upload Files
+Tax_Extraction_Tool/uploads/*
+!Tax_Extraction_Tool/uploads/.gitkeep
+Tax_Extraction_Tool/history/packets/*
+!Tax_Extraction_Tool/history/packets/.gitkeep
+*.log
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
