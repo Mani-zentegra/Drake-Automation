@@ -8,6 +8,7 @@ import win32process
 import psutil
 import pyautogui
 from pywinauto import Desktop
+from date_utils import format_to_drake_date
 
 pyautogui.FAILSAFE = False
 
@@ -172,10 +173,14 @@ def sanitize_value(field_name, value):
     f_lower = field_name.lower()
     if not val_str or val_str.lower() == "none":
         return ""
-    if "date" in f_lower or "/" in val_str:
-        cleaned = val_str.replace("/", "").replace("-", "").strip()
-        if cleaned.isdigit() and len(cleaned) == 8:
-            return cleaned
+    if "date" in f_lower or "dob" in f_lower or "birth" in f_lower:
+        drake_date = format_to_drake_date(val_str)
+        if drake_date:
+            return drake_date.replace("/", "-")
+    if "/" in val_str:
+        drake_date = format_to_drake_date(val_str)
+        if drake_date and "-" in drake_date and len(drake_date) == 10:
+            return drake_date
     if "phone" in f_lower or f_lower in ["daytime", "evening", "cell", "fax"]:
         cleaned = val_str.replace("-", "").replace(" ", "").replace("(", "").replace(")", "").strip()
         if cleaned.isdigit() and len(cleaned) == 10:

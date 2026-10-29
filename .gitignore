@@ -26,6 +26,12 @@ Tax_Extraction_Tool/history/packets/*
 !Tax_Extraction_Tool/history/packets/.gitkeep
 *.log
 
+# Environment Variables & API Secrets
+.env
+*.env
+zoho_config.json
+Tax_Extraction_Tool/zoho_config.json
+
 # IDE & OS Files
 .vscode/
 .idea/

@@ -1,7 +1,10 @@
 import os
 import sys
 import json
+import time
 from flask import Flask, request, jsonify, render_template_string, send_file
+import zoho_api
+from date_utils import format_to_drake_date
 
 # Dedicated PDF modules
 from extractor import extract_w2_from_pdf
@@ -30,10 +33,19 @@ HTML_TEMPLATE = """
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Drake Tax Automation - Excel Organizer & W-2 Extraction</title>
+  <title>Drake Tax Automation - Personal Information</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,400&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
+    :root {
+      --font: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    }
+    body, button, input, select, textarea {
+      font-family: var(--font) !important;
+    }
     .step-active { background-color: #2563eb; color: white; }
     .step-done { background-color: #10b981; color: white; }
     .step-idle { background-color: #e5e7eb; color: #4b5563; }
@@ -58,7 +70,7 @@ HTML_TEMPLATE = """
       <div class="flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
         <button id="nav-mode-excel" onclick="switchMainMode('excel')" class="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs transition bg-white text-emerald-700 shadow border border-slate-200">
           <i class="fa-solid fa-file-excel text-emerald-600 text-sm"></i>
-          <span>1. Master Excel Organizer</span>
+          <span>1. Personal Information (Creator / Excel)</span>
           <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-extrabold">Screens 1 & 2</span>
         </button>
         <button id="nav-mode-pdf" onclick="switchMainMode('pdf')" class="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs transition text-slate-600 hover:text-slate-900">
@@ -131,12 +143,36 @@ HTML_TEMPLATE = """
       <!-- EXCEL LOADING SPINNER -->
       <div id="excel-section-loading" class="max-w-xl mx-auto hidden bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm">
         <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-emerald-600 border-t-transparent"></div>
-        <h3 class="text-lg font-bold text-slate-800 mt-4">Extracting Personal Tax Organizer Data...</h3>
-        <p class="text-sm text-slate-500">Reading Demographics, Spouse, Address, and Dependents table from Excel.</p>
+        <h3 id="excel-loading-title" class="text-lg font-bold text-slate-800 mt-4">Extracting Personal Tax Organizer Data...</h3>
+        <p id="excel-loading-subtitle" class="text-sm text-slate-500">Reading Demographics, Spouse, Address, and Dependents table from Excel.</p>
       </div>
 
       <!-- EXCEL STEP 2: REVIEW & MATCH -->
       <div id="excel-section-review" class="hidden space-y-4">
+        
+        <!-- ZOHO CREATOR INTEGRATION BANNER -->
+        <div id="zoho-creator-banner" class="hidden p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-sm">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg shadow-md">
+              <i class="fa-solid fa-cloud-arrow-down"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-600 text-white font-extrabold uppercase tracking-wide">Zoho Creator Live</span>
+                <span class="text-xs font-semibold text-blue-900" id="zoho-banner-title">Report: All_Personal_Infos</span>
+              </div>
+              <div class="text-sm font-bold text-slate-900 mt-0.5" id="zoho-banner-record-info">Record ID: Loading...</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 self-end md:self-auto">
+            <button onclick="refreshZohoRecord()" class="text-xs font-bold text-blue-700 bg-white border border-blue-300 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition shadow-sm">
+              <i class="fa-solid fa-rotate mr-1"></i> Re-fetch Record
+            </button>
+            <button onclick="openZohoConfigModal()" class="text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition shadow-sm">
+              <i class="fa-solid fa-key mr-1"></i> API Settings
+            </button>
+          </div>
+        </div>
         
         <!-- Action Header -->
         <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
@@ -145,8 +181,8 @@ HTML_TEMPLATE = """
               <i class="fa-solid fa-list-check"></i>
             </div>
             <div>
-              <h3 class="font-bold text-slate-900 leading-tight">Master Organizer - Review & Pre-Check</h3>
-              <p class="text-xs text-slate-500">Verify client details before automatic Drake Screen 1 (Demographics) and Screen 2 (Dependents) injection.</p>
+              <h3 class="font-bold text-slate-900 leading-tight">Personal Information - Review & Drake Entry</h3>
+              <p class="text-xs text-slate-500">Verify Taxpayer, Spouse, Mailing Address, Residency, and Banking before 1-click injection into Drake Tax 2025.</p>
             </div>
           </div>
 
@@ -160,352 +196,296 @@ HTML_TEMPLATE = """
           </div>
         </div>
 
-        <!-- EXTRACTED REVIEW CARDS GRID (2-COLUMN BALANCED) -->
+        <!-- EXTRACTED REVIEW CARDS GRID (2-COLUMN BALANCED - PERSONAL INFO ONLY) -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           
-          <!-- COLUMN 1: SCREENS 1 & 2 (DEMOGRAPHICS, SPOUSE, ADDRESS, DEPENDENTS) -->
-          <div class="space-y-4">
+          <!-- COLUMN 1: TAXPAYER & SPOUSE DEMOGRAPHICS -->
+          <div class="space-y-5">
             
-            <!-- Card 1: Primary Taxpayer Demographics (Screen 1) -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <div class="flex items-center justify-between border-b pb-2">
+            <!-- Card 1: Primary Taxpayer Demographics & Filing Status -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
-                  <i class="fa-solid fa-user text-blue-600"></i> 1. Primary Taxpayer Demographics
-                </h4>
-                <span class="text-[11px] font-mono font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded">Drake Screen 1</span>
-              </div>
-              <div class="grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">First Name</label>
-                  <input type="text" id="xl_tp_first" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-slate-900">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">M.I.</label>
-                  <input type="text" id="xl_tp_mi" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Last Name</label>
-                  <input type="text" id="xl_tp_last" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-slate-900">
-                </div>
-              </div>
-              <div class="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Taxpayer SSN</label>
-                  <input type="text" id="xl_tp_ssn" class="w-full px-2.5 py-1.5 border rounded-lg font-mono font-bold text-slate-900">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Date of Birth (MM/DD/YYYY)</label>
-                  <input type="text" id="xl_tp_dob" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-              </div>
-              <div class="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Occupation</label>
-                  <input type="text" id="xl_tp_occ" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Daytime Phone</label>
-                  <input type="text" id="xl_tp_phone" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-              </div>
-              <div class="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Other / Cell Phone</label>
-                  <input type="text" id="xl_tp_other_phone" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Email Address</label>
-                  <input type="text" id="xl_tp_email" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-              </div>
-            </div>
-
-            <!-- Card 2: Spouse Demographics & Filing Status (Screen 1) -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <div class="flex items-center justify-between border-b pb-2">
-                <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
-                  <i class="fa-solid fa-user-group text-purple-600"></i> 2. Spouse Demographics & Filing Status
+                  <span class="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-user"></i>
+                  </span>
+                  <span>1. Primary Taxpayer Demographics</span>
                 </h4>
                 <div class="flex items-center gap-2">
-                  <label class="text-xs font-semibold text-slate-600">Filing Status:</label>
-                  <select id="xl_filing_status" class="text-xs font-bold px-2 py-1 border rounded-lg bg-slate-50 text-slate-800">
-                    <option value="2">2 - Married Filing Jointly</option>
+                  <span class="text-[11px] font-semibold text-slate-500">Filing Status:</span>
+                  <select id="xl_filing_status" class="text-xs font-bold px-3 py-1.5 border border-slate-300 rounded-lg bg-slate-50 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                     <option value="1">1 - Single</option>
+                    <option value="2">2 - Married Filing Jointly</option>
                     <option value="3">3 - Married Filing Separately</option>
                     <option value="4">4 - Head of Household</option>
+                    <option value="5">5 - Qualifying Surviving Spouse</option>
                   </select>
                 </div>
               </div>
-              <div class="grid grid-cols-3 gap-2 text-xs">
-                <div>
+
+              <!-- Name Fields -->
+              <div class="grid grid-cols-12 gap-3 text-xs">
+                <div class="col-span-5">
                   <label class="block font-semibold text-slate-600 mb-1">First Name</label>
-                  <input type="text" id="xl_sp_first" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-slate-900">
+                  <input type="text" id="xl_tp_first" placeholder="First name" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
-                <div>
+                <div class="col-span-2">
                   <label class="block font-semibold text-slate-600 mb-1">M.I.</label>
-                  <input type="text" id="xl_sp_mi" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <input type="text" id="xl_tp_mi" placeholder="M" maxlength="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-center font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
-                <div>
+                <div class="col-span-5">
                   <label class="block font-semibold text-slate-600 mb-1">Last Name</label>
-                  <input type="text" id="xl_sp_last" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-slate-900">
+                  <input type="text" id="xl_tp_last" placeholder="Last name" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-2 text-xs">
+
+              <!-- Identification & DOB -->
+              <div class="grid grid-cols-2 gap-3 text-xs">
                 <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Spouse SSN / ITIN</label>
-                  <input type="text" id="xl_sp_ssn" class="w-full px-2.5 py-1.5 border rounded-lg font-mono font-bold text-slate-900">
+                  <label class="block font-semibold text-slate-600 mb-1">Taxpayer SSN / ITIN</label>
+                  <input type="text" id="xl_tp_ssn" placeholder="XXX-XX-XXXX" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
                 <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Date of Birth</label>
-                  <input type="text" id="xl_sp_dob" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <label class="block font-semibold text-slate-600 mb-1">Date of Birth (DOB)</label>
+                  <input type="text" id="xl_tp_dob" placeholder="MM-DD-YYYY (e.g. 12-05-1998)" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-2 text-xs">
+
+              <!-- Professional & Contact Info -->
+              <div class="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <label class="block font-semibold text-slate-600 mb-1">Occupation</label>
-                  <input type="text" id="xl_sp_occ" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <input type="text" id="xl_tp_occ" placeholder="Occupation" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
                 <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Spouse Phone</label>
-                  <input type="text" id="xl_sp_phone" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <label class="block font-semibold text-slate-600 mb-1">Daytime / Main Phone</label>
+                  <input type="text" id="xl_tp_phone" placeholder="Phone number" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-2 text-xs">
+
+              <div class="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <label class="block font-semibold text-slate-600 mb-1">Other / Cell Phone</label>
-                  <input type="text" id="xl_sp_other_phone" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <input type="text" id="xl_tp_other_phone" placeholder="Cell phone" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
                 <div>
                   <label class="block font-semibold text-slate-600 mb-1">Email Address</label>
-                  <input type="text" id="xl_sp_email" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <input type="email" id="xl_tp_email" placeholder="client@example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                 </div>
               </div>
             </div>
 
-            <!-- Card 3: Address & Bank Direct Deposit -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <h4 class="font-bold text-sm text-slate-900 border-b pb-2 flex items-center justify-between">
-                <span class="flex items-center gap-2">
-                  <i class="fa-solid fa-location-dot text-red-500"></i> 3. Address & Direct Deposit Banking
-                </span>
-                <span class="text-[11px] font-mono text-slate-400">Screen 1 & DD</span>
-              </h4>
+            <!-- Card 2: Spouse Demographics -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <span class="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-user-group"></i>
+                  </span>
+                  <span>2. Spouse Demographics</span>
+                </h4>
+                <span class="text-[11px] font-semibold text-slate-400">Joint Return (MFJ/MFS)</span>
+              </div>
+
+              <!-- Spouse Name -->
+              <div class="grid grid-cols-12 gap-3 text-xs">
+                <div class="col-span-5">
+                  <label class="block font-semibold text-slate-600 mb-1">Spouse First Name</label>
+                  <input type="text" id="xl_sp_first" placeholder="Spouse first name" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+                <div class="col-span-2">
+                  <label class="block font-semibold text-slate-600 mb-1">M.I.</label>
+                  <input type="text" id="xl_sp_mi" placeholder="M" maxlength="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-center font-bold text-slate-800 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+                <div class="col-span-5">
+                  <label class="block font-semibold text-slate-600 mb-1">Spouse Last Name</label>
+                  <input type="text" id="xl_sp_last" placeholder="Spouse last name" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+              </div>
+
+              <!-- Spouse SSN & DOB -->
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Spouse SSN / ITIN</label>
+                  <input type="text" id="xl_sp_ssn" placeholder="XXX-XX-XXXX" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Spouse Date of Birth</label>
+                  <input type="text" id="xl_sp_dob" placeholder="MM-DD-YYYY (e.g. 08-24-1990)" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+              </div>
+
+              <!-- Spouse Occupation & Contact -->
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Spouse Occupation</label>
+                  <input type="text" id="xl_sp_occ" placeholder="Spouse occupation" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Spouse Main Phone</label>
+                  <input type="text" id="xl_sp_phone" placeholder="Phone number" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Spouse Other Phone</label>
+                  <input type="text" id="xl_sp_other_phone" placeholder="Cell phone" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Spouse Email Address</label>
+                  <input type="email" id="xl_sp_email" placeholder="spouse@example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- COLUMN 2: ADDRESS, RESIDENCY, BANK & DEPENDENTS -->
+          <div class="space-y-5">
+            
+            <!-- Card 3: Mailing Address -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <span class="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-location-dot"></i>
+                  </span>
+                  <span>3. Mailing Address</span>
+                </h4>
+                <span class="text-[11px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">Drake Screen 1</span>
+              </div>
               <div class="text-xs">
                 <label class="block font-semibold text-slate-600 mb-1">Street Address</label>
-                <input type="text" id="xl_addr_street" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-900 font-medium">
+                <input type="text" id="xl_addr_street" placeholder="Street Address" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 font-medium focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none">
               </div>
-              <div class="grid grid-cols-3 gap-2 text-xs">
-                <div>
+              <div class="grid grid-cols-12 gap-3 text-xs">
+                <div class="col-span-6">
                   <label class="block font-semibold text-slate-600 mb-1">City</label>
-                  <input type="text" id="xl_addr_city" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <input type="text" id="xl_addr_city" placeholder="City" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none">
                 </div>
-                <div>
+                <div class="col-span-3">
                   <label class="block font-semibold text-slate-600 mb-1">State</label>
-                  <input type="text" id="xl_addr_state" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800 font-bold">
+                  <input type="text" id="xl_addr_state" placeholder="IL" maxlength="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-center font-bold text-slate-800 uppercase focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none">
                 </div>
-                <div>
+                <div class="col-span-3">
                   <label class="block font-semibold text-slate-600 mb-1">ZIP Code</label>
-                  <input type="text" id="xl_addr_zip" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800 font-mono">
+                  <input type="text" id="xl_addr_zip" placeholder="ZIP Code" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-center text-slate-800 font-bold focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none">
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-3 text-xs pt-2 border-t border-slate-100">
+            </div>
+
+            <!-- Card 4: Residential Status & Physical Presence in U.S. -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <span class="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-passport"></i>
+                  </span>
+                  <span>4. Residential Status & Physical Presence</span>
+                </h4>
+                <span class="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Substantial Presence</span>
+              </div>
+              <div class="text-xs">
+                <label class="block font-semibold text-slate-600 mb-1">Residential Status</label>
+                <input type="text" id="xl_residency_status" placeholder="e.g. US Citizen / Resident Alien / Non-Resident Alien" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none">
+              </div>
+              <div class="grid grid-cols-3 gap-3 text-xs pt-1">
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Days in US (2025)</label>
+                  <input type="text" id="xl_days_2025" placeholder="365" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-center font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none">
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Days in US (2024)</label>
+                  <input type="text" id="xl_days_2024" placeholder="366" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-center font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none">
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-600 mb-1">Days in US (2023)</label>
+                  <input type="text" id="xl_days_2023" placeholder="365" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-center font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none">
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 5: Direct Deposit / Banking Information -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <span class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-building-columns"></i>
+                  </span>
+                  <span>5. Direct Deposit & Bank Details</span>
+                </h4>
+                <span class="text-[11px] font-mono text-slate-400">Screen DD</span>
+              </div>
+              <div class="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <label class="block font-semibold text-slate-600 mb-1">Bank Name</label>
-                  <input type="text" id="xl_bank_name" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <input type="text" id="xl_bank_name" placeholder="Bank Name" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <div>
                   <label class="block font-semibold text-slate-600 mb-1">Account Type</label>
-                  <input type="text" id="xl_bank_type" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
+                  <select id="xl_bank_type" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-800 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                    <option value="Checking">Checking</option>
+                    <option value="Savings">Savings</option>
+                  </select>
                 </div>
+              </div>
+              <div class="grid grid-cols-2 gap-3 text-xs">
                 <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Routing Number</label>
-                  <input type="text" id="xl_bank_routing" class="w-full px-2.5 py-1.5 border rounded-lg font-mono text-slate-800 font-bold">
+                  <label class="block font-semibold text-slate-600 mb-1">Routing Number (9 Digits)</label>
+                  <input type="text" id="xl_bank_routing" placeholder="Routing Number" maxlength="9" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <div>
                   <label class="block font-semibold text-slate-600 mb-1">Account Number</label>
-                  <input type="text" id="xl_bank_account" class="w-full px-2.5 py-1.5 border rounded-lg font-mono text-slate-800 font-bold">
+                  <input type="text" id="xl_bank_account" placeholder="Account Number" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
               </div>
             </div>
 
-            <!-- Card 4: Dependents (Screen 2) -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <div class="flex items-center justify-between border-b pb-2">
+            <!-- Card 6: Dependents Information (Drake Screen 2) -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
-                  <i class="fa-solid fa-children text-emerald-600"></i> 4. Dependents List (Drake Screen 2)
+                  <span class="w-7 h-7 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-children"></i>
+                  </span>
+                  <span>6. Dependents List (Drake Screen 2)</span>
                 </h4>
-                <span id="xl_dep_count_badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                  3 Dependents Found
+                <span id="xl_dep_count_badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                  0 Dependents Found
                 </span>
               </div>
-              <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs border border-slate-200 rounded-lg overflow-hidden">
+              <div class="overflow-x-auto border border-slate-200 rounded-xl">
+                <table class="w-full text-left text-xs">
                   <thead class="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                     <tr>
-                      <th class="p-2">#</th>
-                      <th class="p-2">Full Name</th>
-                      <th class="p-2">Relationship</th>
-                      <th class="p-2">SSN</th>
-                      <th class="p-2">DOB</th>
-                      <th class="p-2">Mos</th>
+                      <th class="p-2.5">#</th>
+                      <th class="p-2.5">Full Name</th>
+                      <th class="p-2.5">Relationship</th>
+                      <th class="p-2.5">SSN / ITIN</th>
+                      <th class="p-2.5">DOB</th>
+                      <th class="p-2.5">Mos</th>
                     </tr>
                   </thead>
-                  <tbody id="xl_dependents_tbody" class="divide-y divide-slate-100 font-medium text-slate-800">
+                  <tbody id="xl_dependents_tbody" class="divide-y divide-slate-100 font-medium text-slate-800 bg-white">
                     <!-- Populated via JS -->
                   </tbody>
                 </table>
               </div>
             </div>
 
-          </div>
-
-          <!-- COLUMN 2: CHECKLISTS & ACTION CTA -->
-          <div class="space-y-4">
-            
-            <!-- Card 5: Residency, FBAR, PFIC & Digital Assets -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <h4 class="font-bold text-sm text-slate-900 border-b pb-2 flex items-center gap-2">
-                <i class="fa-solid fa-shield-halved text-amber-600"></i> 5. Residency, FBAR & Digital Assets
-              </h4>
-              <div class="grid grid-cols-2 gap-3 text-xs">
+            <!-- Bottom Action CTA Banner -->
+            <div class="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg space-y-3">
+              <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Residential Status</label>
-                  <input type="text" id="xl_residency_status" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-slate-800">
+                  <h4 class="font-bold text-base">Ready to Populate Drake Tax 2025?</h4>
+                  <p class="text-xs text-blue-100 mt-0.5">Enters Screen 1 Demographics and Screen 2 Dependents automatically into Drake Tax desktop.</p>
                 </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Foreign Bank Account?</label>
-                  <input type="text" id="xl_foreign_bank" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Required to file FBAR?</label>
-                  <input type="text" id="xl_fbar_required" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Digital Asset / Crypto Interest?</label>
-                  <input type="text" id="xl_digital_assets" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div class="col-span-2">
-                  <label class="block font-semibold text-slate-600 mb-1">Health Insurance in 2025?</label>
-                  <input type="text" id="xl_health_insurance" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
+                <button onclick="sendApprovedExcelToDrake()" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white hover:bg-blue-50 text-blue-700 font-bold text-sm shadow transition transform hover:-translate-y-0.5 shrink-0">
+                  <i class="fa-solid fa-bolt text-blue-600"></i>
+                  <span>Approve & Enter into Drake</span>
+                </button>
               </div>
-            </div>
-
-            <!-- Card 6: Income Summary Checklist -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <h4 class="font-bold text-sm text-slate-900 border-b pb-2 flex items-center justify-between">
-                <span class="flex items-center gap-2">
-                  <i class="fa-solid fa-money-bill-trend-up text-emerald-600"></i> 6. Income Summary Checklist
-                </span>
-                <span class="text-[11px] font-mono text-slate-400">Rows 62-79</span>
-              </h4>
-              <div class="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Taxpayer Salaries (W-2)</label>
-                  <input type="text" id="xl_inc_wages_tp" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-emerald-700">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Spouse Salaries (W-2)</label>
-                  <input type="text" id="xl_inc_wages_sp" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-purple-700">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">State Tax Refund</label>
-                  <input type="text" id="xl_inc_state_refund" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Interest & Dividends</label>
-                  <input type="text" id="xl_inc_int_div" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Stock Sales / Capital Gains</label>
-                  <input type="text" id="xl_inc_stocks" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Pension / Annuity / IRA</label>
-                  <input type="text" id="xl_inc_pension" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-              </div>
-            </div>
-
-            <!-- Card 7: Credits & Adjustments to Income -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <h4 class="font-bold text-sm text-slate-900 border-b pb-2 flex items-center justify-between">
-                <span class="flex items-center gap-2">
-                  <i class="fa-solid fa-graduation-cap text-indigo-600"></i> 7. Credits & Adjustments to Income
-                </span>
-                <span class="text-[11px] font-mono text-slate-400">Rows 80-92</span>
-              </h4>
-              <div class="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Higher Ed Tuition (1098-T)</label>
-                  <input type="text" id="xl_adj_tuition" class="w-full px-2.5 py-1.5 border rounded-lg font-medium text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Educator / Teacher Supplies</label>
-                  <input type="text" id="xl_adj_educator" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">HSA Contributions</label>
-                  <input type="text" id="xl_adj_hsa" class="w-full px-2.5 py-1.5 border rounded-lg font-medium text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">IRA Contributions (Trad/Roth)</label>
-                  <input type="text" id="xl_adj_ira" class="w-full px-2.5 py-1.5 border rounded-lg font-medium text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Child Care Expenses</label>
-                  <input type="text" id="xl_adj_childcare" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Student Loan Interest</label>
-                  <input type="text" id="xl_adj_student_loan" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-              </div>
-            </div>
-
-            <!-- Card 8: Itemized Deductions (Schedule A) -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <h4 class="font-bold text-sm text-slate-900 border-b pb-2 flex items-center justify-between">
-                <span class="flex items-center gap-2">
-                  <i class="fa-solid fa-receipt text-rose-600"></i> 8. Itemized Deductions (Schedule A)
-                </span>
-                <span class="text-[11px] font-mono text-slate-400">Rows 93-107</span>
-              </h4>
-              <div class="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Home Mortgage Interest</label>
-                  <input type="text" id="xl_ded_mortgage" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-slate-900">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Real Estate Property Taxes</label>
-                  <input type="text" id="xl_ded_property_tax" class="w-full px-2.5 py-1.5 border rounded-lg font-bold text-slate-900">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Charitable Donations</label>
-                  <input type="text" id="xl_ded_charity" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Doctors, Hospitals, Dentists</label>
-                  <input type="text" id="xl_ded_doctors" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Prescription Drugs & Insulin</label>
-                  <input type="text" id="xl_ded_drugs" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-                <div>
-                  <label class="block font-semibold text-slate-600 mb-1">Personal Property Tax</label>
-                  <input type="text" id="xl_ded_personal_prop" class="w-full px-2.5 py-1.5 border rounded-lg text-slate-800">
-                </div>
-              </div>
-            </div>
-
-            <!-- Bottom Action CTA -->
-            <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-5 text-center space-y-3">
-              <h4 class="font-bold text-slate-900 text-sm">Ready to Create Client Return in Drake?</h4>
-              <p class="text-xs text-slate-600">The automation engine will create/open return <strong>Mani Bharathi (123-45-6789)</strong>, fill Screen 1 Demographics, and populate all 3 dependents on Screen 2.</p>
-              <button onclick="sendApprovedExcelToDrake()" class="inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition transform hover:-translate-y-0.5">
-                <i class="fa-solid fa-bolt"></i> Approve & Enter Client into Drake Tax
-              </button>
             </div>
 
           </div>
@@ -1397,96 +1377,81 @@ HTML_TEMPLATE = """
       const addr = d.address || {};
       const bk = d.bank || {};
       const rq = d.residency_questions || {};
-      const inc = d.income_checklist || {};
-      const adj = d.credits_and_adjustments || {};
-      const ded = d.itemized_deductions || {};
 
-      document.getElementById('xl_tp_first').value = tp.first_name || '';
-      document.getElementById('xl_tp_mi').value = tp.mi || '';
-      document.getElementById('xl_tp_last').value = tp.last_name || '';
-      document.getElementById('xl_tp_ssn').value = tp.ssn || '';
-      document.getElementById('xl_tp_dob').value = tp.dob || '';
-      document.getElementById('xl_tp_occ').value = tp.occupation || '';
-      document.getElementById('xl_tp_phone').value = tp.phone || '';
-      document.getElementById('xl_tp_other_phone').value = tp.other_phone || '';
-      document.getElementById('xl_tp_email').value = tp.email || '';
+      // 1. Primary Taxpayer Demographics
+      const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+      setVal('xl_tp_first', tp.first_name);
+      setVal('xl_tp_mi', tp.mi);
+      setVal('xl_tp_last', tp.last_name);
+      setVal('xl_tp_ssn', tp.ssn);
+      setVal('xl_tp_dob', tp.dob);
+      setVal('xl_tp_occ', tp.occupation);
+      setVal('xl_tp_phone', tp.phone);
+      setVal('xl_tp_other_phone', tp.other_phone);
+      setVal('xl_tp_email', tp.email);
 
-      document.getElementById('xl_sp_first').value = sp.first_name || '';
-      document.getElementById('xl_sp_mi').value = sp.mi || '';
-      document.getElementById('xl_sp_last').value = sp.last_name || '';
-      document.getElementById('xl_sp_ssn').value = sp.ssn || '';
-      document.getElementById('xl_sp_dob').value = sp.dob || '';
-      document.getElementById('xl_sp_occ').value = sp.occupation || '';
-      document.getElementById('xl_sp_phone').value = sp.phone || '';
-      document.getElementById('xl_sp_other_phone').value = sp.other_phone || '';
-      document.getElementById('xl_sp_email').value = sp.email || '';
+      // 2. Spouse Demographics
+      setVal('xl_sp_first', sp.first_name);
+      setVal('xl_sp_mi', sp.mi);
+      setVal('xl_sp_last', sp.last_name);
+      setVal('xl_sp_ssn', sp.ssn);
+      setVal('xl_sp_dob', sp.dob);
+      setVal('xl_sp_occ', sp.occupation);
+      setVal('xl_sp_phone', sp.phone);
+      setVal('xl_sp_other_phone', sp.other_phone);
+      setVal('xl_sp_email', sp.email);
 
-      document.getElementById('xl_filing_status').value = d.filing_status || '1';
+      // Filing Status (default 1 if Single, 2 if Married)
+      setVal('xl_filing_status', d.filing_status || '1');
 
-      document.getElementById('xl_addr_street').value = addr.street || '';
-      document.getElementById('xl_addr_city').value = addr.city || '';
-      document.getElementById('xl_addr_state').value = addr.state || '';
-      document.getElementById('xl_addr_zip').value = addr.zip || '';
+      // 3. Mailing Address
+      setVal('xl_addr_street', addr.street);
+      setVal('xl_addr_city', addr.city);
+      setVal('xl_addr_state', addr.state);
+      setVal('xl_addr_zip', addr.zip);
 
-      document.getElementById('xl_bank_name').value = bk.bank_name || '';
-      document.getElementById('xl_bank_type').value = bk.account_type || '';
-      document.getElementById('xl_bank_routing').value = bk.routing || '';
-      document.getElementById('xl_bank_account').value = bk.account_number || '';
+      // 4. Residential Status & Physical Presence
+      setVal('xl_residency_status', rq.residential_status);
+      setVal('xl_days_2025', rq.days_2025);
+      setVal('xl_days_2024', rq.days_2024);
+      setVal('xl_days_2023', rq.days_2023);
 
-      // Dependents table
-      const tbody = document.getElementById('xl_dependents_tbody');
-      tbody.innerHTML = '';
-      const deps = d.dependents || [];
-      document.getElementById('xl_dep_count_badge').textContent = deps.length + ' Dependents Found';
-
-      if (deps.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="p-3 text-center text-slate-400">No dependents found in this organizer.</td></tr>';
-      } else {
-        deps.forEach((dep, idx) => {
-          const tr = document.createElement('tr');
-          tr.className = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
-          tr.innerHTML = `
-            <td class="p-2 font-bold text-slate-400">${idx + 1}</td>
-            <td class="p-2 font-bold text-slate-900">${dep.first_name} ${dep.last_name}</td>
-            <td class="p-2"><span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold">${dep.relationship || 'CHILD'}</span></td>
-            <td class="p-2 font-mono text-slate-600">${dep.ssn || 'N/A'}</td>
-            <td class="p-2">${dep.dob || 'N/A'}</td>
-            <td class="p-2 font-bold">${dep.months || '12'} mos</td>
-          `;
-          tbody.appendChild(tr);
-        });
+      // 5. Direct Deposit / Banking
+      setVal('xl_bank_name', bk.bank_name);
+      const bankTypeEl = document.getElementById('xl_bank_type');
+      if (bankTypeEl) {
+        const bt = (bk.account_type || '').toLowerCase();
+        bankTypeEl.value = bt.includes('sav') ? 'Savings' : 'Checking';
       }
+      setVal('xl_bank_routing', bk.routing);
+      setVal('xl_bank_account', bk.account_number);
 
-      // Residency & FBAR
-      document.getElementById('xl_residency_status').value = rq.residential_status || 'Citizen';
-      document.getElementById('xl_foreign_bank').value = rq.foreign_bank_account || 'No';
-      document.getElementById('xl_fbar_required').value = rq.fbar_required || 'Yes';
-      document.getElementById('xl_digital_assets').value = rq.digital_assets || 'No';
-      document.getElementById('xl_health_insurance').value = rq.health_insurance || 'Yes';
+      // 6. Dependents List
+      const tbody = document.getElementById('xl_dependents_tbody');
+      if (tbody) {
+        tbody.innerHTML = '';
+        const deps = d.dependents || [];
+        const badge = document.getElementById('xl_dep_count_badge');
+        if (badge) badge.textContent = deps.length + (deps.length === 1 ? ' Dependent Found' : ' Dependents Found');
 
-      // Income Checklist
-      document.getElementById('xl_inc_wages_tp').value = inc.wages_taxpayer !== undefined ? '$' + Number(inc.wages_taxpayer).toLocaleString() : '';
-      document.getElementById('xl_inc_wages_sp').value = inc.wages_spouse !== undefined ? '$' + Number(inc.wages_spouse).toLocaleString() : '';
-      document.getElementById('xl_inc_state_refund').value = inc.state_tax_refund !== undefined ? '$' + Number(inc.state_tax_refund).toLocaleString() : '';
-      document.getElementById('xl_inc_int_div').value = inc.interest_dividends !== undefined ? '$' + Number(inc.interest_dividends).toLocaleString() : '';
-      document.getElementById('xl_inc_stocks').value = inc.stock_sales_capital_gains !== undefined ? '$' + Number(inc.stock_sales_capital_gains).toLocaleString() : '';
-      document.getElementById('xl_inc_pension').value = inc.pension_annuity_ira !== undefined ? '$' + Number(inc.pension_annuity_ira).toLocaleString() : '';
-
-      // Credits & Adjustments
-      document.getElementById('xl_adj_tuition').value = adj.higher_education_tuition !== undefined ? '$' + Number(adj.higher_education_tuition).toLocaleString() : '';
-      document.getElementById('xl_adj_educator').value = adj.educator_supplies !== undefined ? '$' + Number(adj.educator_supplies).toLocaleString() : '';
-      document.getElementById('xl_adj_hsa').value = adj.hsa_contributions !== undefined ? '$' + Number(adj.hsa_contributions).toLocaleString() : '';
-      document.getElementById('xl_adj_ira').value = adj.ira_contributions !== undefined ? '$' + Number(adj.ira_contributions).toLocaleString() : '';
-      document.getElementById('xl_adj_childcare').value = adj.child_care_expenses !== undefined ? '$' + Number(adj.child_care_expenses).toLocaleString() : '';
-      document.getElementById('xl_adj_student_loan').value = adj.student_loan_interest !== undefined ? '$' + Number(adj.student_loan_interest).toLocaleString() : '';
-
-      // Itemized Deductions
-      document.getElementById('xl_ded_mortgage').value = ded.mortgage_interest !== undefined ? '$' + Number(ded.mortgage_interest).toLocaleString() : '';
-      document.getElementById('xl_ded_property_tax').value = ded.real_estate_taxes !== undefined ? '$' + Number(ded.real_estate_taxes).toLocaleString() : '';
-      document.getElementById('xl_ded_charity').value = ded.charitable_contributions !== undefined ? '$' + Number(ded.charitable_contributions).toLocaleString() : '';
-      document.getElementById('xl_ded_doctors').value = ded.doctors_dentists_hospitals !== undefined ? '$' + Number(ded.doctors_dentists_hospitals).toLocaleString() : '';
-      document.getElementById('xl_ded_drugs').value = ded.prescription_drugs !== undefined ? '$' + Number(ded.prescription_drugs).toLocaleString() : '';
-      document.getElementById('xl_ded_personal_prop').value = ded.personal_property_tax !== undefined ? '$' + Number(ded.personal_property_tax).toLocaleString() : '';
+        if (deps.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="p-3 text-center text-slate-400">No dependents found in this record.</td></tr>';
+        } else {
+          deps.forEach((dep, idx) => {
+            const tr = document.createElement('tr');
+            tr.className = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+            tr.innerHTML = `
+              <td class="p-2.5 font-bold text-slate-400">${idx + 1}</td>
+              <td class="p-2.5 font-bold text-slate-900">${dep.first_name || ''} ${dep.last_name || ''}</td>
+              <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-teal-50 text-teal-800 font-bold">${dep.relationship || 'CHILD'}</span></td>
+              <td class="p-2.5 font-mono text-slate-600">${dep.ssn || 'N/A'}</td>
+              <td class="p-2.5">${dep.dob || 'N/A'}</td>
+              <td class="p-2.5 font-bold">${dep.months || '12'} mos</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+      }
     }
 
     async function sendApprovedExcelToDrake() {
@@ -1503,9 +1468,10 @@ HTML_TEMPLATE = """
           mi: document.getElementById('xl_tp_mi').value,
           last_name: document.getElementById('xl_tp_last').value,
           ssn: document.getElementById('xl_tp_ssn').value,
-          dob: document.getElementById('xl_tp_dob').value,
+          dob: (document.getElementById('xl_tp_dob').value || '').trim().replace(/\//g, '-'),
           occupation: document.getElementById('xl_tp_occ').value,
           phone: document.getElementById('xl_tp_phone').value,
+          other_phone: document.getElementById('xl_tp_other_phone') ? document.getElementById('xl_tp_other_phone').value : '',
           email: document.getElementById('xl_tp_email').value,
         },
         spouse: {
@@ -1513,9 +1479,11 @@ HTML_TEMPLATE = """
           mi: document.getElementById('xl_sp_mi').value,
           last_name: document.getElementById('xl_sp_last').value,
           ssn: document.getElementById('xl_sp_ssn').value,
-          dob: document.getElementById('xl_sp_dob').value,
+          dob: (document.getElementById('xl_sp_dob').value || '').trim().replace(/\//g, '-'),
           occupation: document.getElementById('xl_sp_occ').value,
           phone: document.getElementById('xl_sp_phone').value,
+          other_phone: document.getElementById('xl_sp_other_phone') ? document.getElementById('xl_sp_other_phone').value : '',
+          email: document.getElementById('xl_sp_email') ? document.getElementById('xl_sp_email').value : '',
         },
         filing_status: document.getElementById('xl_filing_status').value,
         address: {
@@ -1524,13 +1492,19 @@ HTML_TEMPLATE = """
           state: document.getElementById('xl_addr_state').value,
           zip: document.getElementById('xl_addr_zip').value,
         },
+        residency_questions: {
+          residential_status: document.getElementById('xl_residency_status') ? document.getElementById('xl_residency_status').value : '',
+          days_2025: document.getElementById('xl_days_2025') ? document.getElementById('xl_days_2025').value : '',
+          days_2024: document.getElementById('xl_days_2024') ? document.getElementById('xl_days_2024').value : '',
+          days_2023: document.getElementById('xl_days_2023') ? document.getElementById('xl_days_2023').value : '',
+        },
         bank: {
           bank_name: document.getElementById('xl_bank_name').value,
           account_type: document.getElementById('xl_bank_type').value,
           routing: document.getElementById('xl_bank_routing').value,
           account_number: document.getElementById('xl_bank_account').value,
         },
-        dependents: currentExcelData.dependents || []
+        dependents: (currentExcelData.dependents || []).map(d => ({...d, dob: (d.dob || '').replace(/\//g, '-')}))
       };
 
       // Populate verification values panel
@@ -3175,11 +3149,216 @@ HTML_TEMPLATE = """
       resetToUpload();
     }
 
-    // Auto-load history on start
+    // =========================================================================
+    // ZOHO CREATOR AUTOMATION & REST API INTEGRATION
+    // =========================================================================
+    let currentCreatorRecordId = null;
+
+    async function initZohoCreatorMode(recordId) {
+      currentCreatorRecordId = recordId;
+      switchMainMode('excel');
+      showExcelSection('loading');
+      updateExcelStep(2);
+
+      const titleEl = document.getElementById('excel-loading-title');
+      const subEl = document.getElementById('excel-loading-subtitle');
+      if (titleEl) titleEl.textContent = 'Connecting to Zoho Creator REST API...';
+      if (subEl) subEl.textContent = 'Fetching record ID: ' + recordId + ' from report All_Personal_Infos';
+
+      try {
+        const resp = await fetch('/api/zoho/fetch-record?record_id=' + encodeURIComponent(recordId));
+        const res = await resp.json();
+
+        if (res.success && res.data) {
+          populateExcelReviewForm(res.data);
+          
+          // Show Zoho Creator Banner
+          const banner = document.getElementById('zoho-creator-banner');
+          if (banner) {
+            banner.classList.remove('hidden');
+            const tpName = ((res.data.taxpayer?.first_name || '') + ' ' + (res.data.taxpayer?.last_name || '')).trim() || 'Client';
+            document.getElementById('zoho-banner-record-info').textContent = 
+              `Taxpayer: ${tpName} | Record ID: ${recordId}`;
+          }
+          
+          showExcelSection('review');
+        } else if (res.needs_auth) {
+          showExcelSection('upload');
+          updateExcelStep(1);
+          openZohoConfigModal(res.error || 'Zoho OAuth Access Token required.');
+        } else {
+          alert('Failed to load Zoho Creator record: ' + (res.error || 'Unknown error'));
+          resetExcelUpload();
+        }
+      } catch (err) {
+        alert('Network error connecting to Zoho API backend: ' + err);
+        resetExcelUpload();
+      }
+    }
+
+    function refreshZohoRecord() {
+      if (currentCreatorRecordId) {
+        initZohoCreatorMode(currentCreatorRecordId);
+      }
+    }
+
+    function openZohoConfigModal(msg) {
+      const modal = document.getElementById('modal-zoho-config');
+      if (modal) {
+        modal.classList.remove('hidden');
+        if (msg) {
+          document.getElementById('zoho-modal-msg').textContent = msg;
+          document.getElementById('zoho-modal-msg-box').classList.remove('hidden');
+        } else {
+          document.getElementById('zoho-modal-msg-box').classList.add('hidden');
+        }
+        fetch('/api/zoho/get-config')
+          .then(r => r.json())
+          .then(d => {
+            if (d.success && d.config) {
+              const c = d.config;
+              document.getElementById('zoho-input-domain').value = c.domain || 'creator.zoho.in';
+              document.getElementById('zoho-input-owner').value = c.owner_name || 'zentegraindia';
+              document.getElementById('zoho-input-app').value = c.app_link_name || 'drake-automation';
+              document.getElementById('zoho-input-report').value = c.report_link_name || 'All_Personal_Infos';
+              document.getElementById('zoho-input-token').value = c.access_token || '';
+              document.getElementById('zoho-input-client-id').value = c.client_id || '';
+              document.getElementById('zoho-input-client-secret').value = c.client_secret || '';
+              document.getElementById('zoho-input-refresh-token').value = c.refresh_token || '';
+            }
+          }).catch(() => {});
+      }
+    }
+
+    function closeZohoConfigModal() {
+      const modal = document.getElementById('modal-zoho-config');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    async function saveZohoConfigForm() {
+      const saveBtn = document.getElementById('btn-save-zoho-config');
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
+
+      const payload = {
+        domain: document.getElementById('zoho-input-domain').value.trim(),
+        owner_name: document.getElementById('zoho-input-owner').value.trim(),
+        app_link_name: document.getElementById('zoho-input-app').value.trim(),
+        report_link_name: document.getElementById('zoho-input-report').value.trim(),
+        access_token: document.getElementById('zoho-input-token').value.trim(),
+        client_id: document.getElementById('zoho-input-client-id').value.trim(),
+        client_secret: document.getElementById('zoho-input-client-secret').value.trim(),
+        refresh_token: document.getElementById('zoho-input-refresh-token').value.trim()
+      };
+
+      try {
+        const resp = await fetch('/api/zoho/save-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res.success) {
+          closeZohoConfigModal();
+          if (currentCreatorRecordId) {
+            initZohoCreatorMode(currentCreatorRecordId);
+          } else {
+            alert('Zoho Creator settings saved successfully!');
+          }
+        } else {
+          alert('Error saving config: ' + (res.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Failed to save Zoho config: ' + err);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Save & Continue';
+      }
+    }
+
+    // Auto-load router on start
     document.addEventListener('DOMContentLoaded', () => {
-      loadPacketHistory();
+      const urlParams = new URLSearchParams(window.location.search);
+      const mode = urlParams.get('mode');
+      const recordId = urlParams.get('record_id');
+
+      if (mode === 'creator' && recordId) {
+        initZohoCreatorMode(recordId);
+      } else {
+        loadPacketHistory();
+      }
     });
   </script>
+
+  <!-- ZOHO CREATOR CONFIGURATION MODAL -->
+  <div id="modal-zoho-config" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden">
+      <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between text-white">
+        <div class="flex items-center gap-2.5">
+          <i class="fa-solid fa-cloud-arrow-down text-xl"></i>
+          <div>
+            <h3 class="font-bold text-base">Connect Zoho Creator REST API</h3>
+            <p class="text-xs text-blue-100">Fetch live records into Drake Tax 2025</p>
+          </div>
+        </div>
+        <button onclick="closeZohoConfigModal()" class="text-white/80 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
+        <div id="zoho-modal-msg-box" class="hidden p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl flex items-start gap-2">
+          <i class="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5"></i>
+          <span id="zoho-modal-msg">Authentication required to connect with Zoho Creator.</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Zoho Domain</label>
+            <input id="zoho-input-domain" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs" value="creator.zoho.in">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Owner Name</label>
+            <input id="zoho-input-owner" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs" value="zentegraindia">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">App Link Name</label>
+            <input id="zoho-input-app" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs" value="drake-automation">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Report Link Name</label>
+            <input id="zoho-input-report" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs" value="All_Personal_Infos">
+          </div>
+        </div>
+
+        <div class="border-t border-slate-200 pt-3">
+          <label class="block font-bold text-slate-900 mb-1">
+            OAuth Access Token <span class="text-emerald-600 font-normal">(Fastest - 1 Hour Token)</span>
+          </label>
+          <input id="zoho-input-token" type="password" placeholder="Paste 1000.xxxx access token here" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs">
+          <p class="text-[11px] text-slate-500 mt-1">Generated from <a href="https://api-console.zoho.in" target="_blank" class="text-blue-600 underline">Zoho API Console</a> (Self Client) with scope <code class="bg-slate-100 px-1 py-0.5 rounded text-slate-700">ZohoCreator.report.READ</code>.</p>
+        </div>
+
+        <div class="border-t border-slate-200 pt-3">
+          <label class="block font-bold text-slate-900 mb-1">
+            Permanent OAuth Setup <span class="text-slate-400 font-normal">(Optional - auto-refreshes forever)</span>
+          </label>
+          <div class="space-y-2 mt-1.5">
+            <input id="zoho-input-client-id" type="text" placeholder="Client ID (e.g. 1000.xxx)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono text-xs">
+            <input id="zoho-input-client-secret" type="password" placeholder="Client Secret" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono text-xs">
+            <input id="zoho-input-refresh-token" type="password" placeholder="Refresh Token (e.g. 1000.xxx)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono text-xs">
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 px-6 py-3 border-t border-slate-200 flex items-center justify-end gap-2">
+        <button onclick="closeZohoConfigModal()" class="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 rounded-lg">Cancel</button>
+        <button id="btn-save-zoho-config" onclick="saveZohoConfigForm()" class="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow transition">
+          <i class="fa-solid fa-check mr-1"></i> Save & Continue
+        </button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
 """
@@ -3187,6 +3366,47 @@ HTML_TEMPLATE = """
 @app.route("/")
 def index():
     return render_template_string(HTML_TEMPLATE)
+
+# =============================================================================
+# ZOHO CREATOR REST API INTEGRATION ENDPOINTS
+# =============================================================================
+@app.route("/api/zoho/fetch-record", methods=["GET"])
+def api_zoho_fetch_record():
+    record_id = request.args.get("record_id", "").strip()
+    if not record_id:
+        return jsonify({"success": False, "error": "Missing record_id parameter"}), 400
+    
+    data, err = zoho_api.fetch_creator_record(record_id)
+    if err == "NO_TOKEN" or (err and "OAuth" in err):
+        return jsonify({"success": False, "error": err, "needs_auth": True})
+    if err:
+        return jsonify({"success": False, "error": err})
+    
+    return jsonify({"success": True, "data": data, "record_id": record_id})
+
+@app.route("/api/zoho/save-config", methods=["POST"])
+def api_zoho_save_config():
+    payload = request.get_json() or {}
+    cfg = zoho_api.load_zoho_config()
+    for k in ["domain", "owner_name", "app_link_name", "report_link_name", "client_id", "client_secret", "refresh_token", "access_token"]:
+        if k in payload and payload[k] is not None:
+            cfg[k] = payload[k].strip()
+    if payload.get("access_token"):
+        cfg["token_expiry"] = time.time() + 3500
+    zoho_api.save_zoho_config(cfg)
+    return jsonify({"success": True, "message": "Zoho configuration saved."})
+
+@app.route("/api/zoho/get-config", methods=["GET"])
+def api_zoho_get_config():
+    cfg = zoho_api.load_zoho_config()
+    masked = dict(cfg)
+    if masked.get("client_secret"):
+        masked["client_secret"] = masked["client_secret"][:4] + "********"
+    if masked.get("refresh_token"):
+        masked["refresh_token"] = masked["refresh_token"][:6] + "********"
+    if masked.get("access_token"):
+        masked["access_token"] = masked["access_token"][:8] + "********"
+    return jsonify({"success": True, "config": masked})
 
 # =============================================================================
 # EXCEL WORKFLOW API ENDPOINTS (DEDICATED)
@@ -3226,6 +3446,16 @@ def excel_populate_drake():
         data = request.json
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
+
+        # Standardize all dates to Drake Tax format (MM/DD/YYYY)
+        if "taxpayer" in data and isinstance(data["taxpayer"], dict) and "dob" in data["taxpayer"]:
+            data["taxpayer"]["dob"] = format_to_drake_date(data["taxpayer"]["dob"])
+        if "spouse" in data and isinstance(data["spouse"], dict) and "dob" in data["spouse"]:
+            data["spouse"]["dob"] = format_to_drake_date(data["spouse"]["dob"])
+        if "dependents" in data and isinstance(data["dependents"], list):
+            for dep in data["dependents"]:
+                if isinstance(dep, dict) and "dob" in dep:
+                    dep["dob"] = format_to_drake_date(dep["dob"])
 
         result = populate_excel_return(data)
         if isinstance(result, tuple) and len(result) == 3:
