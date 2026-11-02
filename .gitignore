@@ -17,7 +17,9 @@ build/
 # Virtual Environments
 venv/
 env/
+env
 ENV/
+.playwright-mcp/
 
 # Temporary / Upload Files
 Tax_Extraction_Tool/uploads/*
@@ -29,6 +31,8 @@ Tax_Extraction_Tool/history/packets/*
 # Environment Variables & API Secrets
 .env
 *.env
+env
+Tax_Extraction_Tool/env
 zoho_config.json
 Tax_Extraction_Tool/zoho_config.json
 

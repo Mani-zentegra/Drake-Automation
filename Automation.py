@@ -7,6 +7,7 @@ import win32con
 import openpyxl
 import pyautogui
 from pywinauto import Desktop
+import app_navigator
 
 import random
 
@@ -350,12 +351,8 @@ def exit_to_menu():
         h, _ = find_drake_window()
         if not h:
             break
-        try:
-            win32gui.ShowWindow(h, win32con.SW_RESTORE)
-            win32gui.SetForegroundWindow(h)
-        except Exception:
-            pass
-        time.sleep(0.2)
+        app_navigator.force_activate_window(h)
+        time.sleep(0.15)
 
         try:
             w = Desktop(backend="uia").window(handle=h)
@@ -393,12 +390,8 @@ def navigate_to_screen(hwnd, code):
         hwnd, _ = find_drake_window()
 
     if hwnd and win32gui.IsWindow(hwnd):
-        try:
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-            win32gui.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
-    time.sleep(0.3)
+        app_navigator.force_activate_window(hwnd)
+    time.sleep(0.2)
 
     try:
         w = Desktop(backend="uia").window(handle=hwnd)
@@ -930,11 +923,7 @@ def run():
             print(f"[ERROR] Could not navigate to Screen {code}.")
             continue
 
-        try:
-            win32gui.ShowWindow(screen_hwnd, win32con.SW_RESTORE)
-            win32gui.SetForegroundWindow(screen_hwnd)
-        except Exception:
-            pass
+        app_navigator.force_activate_window(screen_hwnd)
         time.sleep(0.2)
 
         window = connect_window(screen_hwnd)
@@ -948,6 +937,9 @@ def run():
         print(f"[SAVING] Screen {code} finished. Saving and returning to Data Entry Menu...")
         exit_to_menu()
         time.sleep(0.5)
+
+    # Automatically restore Browser when complete
+    app_navigator.switch_to_browser()
 
     print("\n" + "=" * 65)
     print("   ALL 4 SECTIONS AUTOMATICALLY COMPLETED SUCCESSFULLY! ")

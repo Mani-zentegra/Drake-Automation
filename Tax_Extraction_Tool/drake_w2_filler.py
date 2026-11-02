@@ -11,6 +11,7 @@ import win32gui
 import win32con
 import pyautogui
 from pywinauto import Desktop
+import app_navigator
 
 pyautogui.FAILSAFE = False
 
@@ -373,6 +374,8 @@ def populate_w2_screen(w2_data):
         print(msg)
         logs.append(msg)
 
+    # AUTOMATED SOFTWARE NAVIGATION: Bring Drake Tax 2025 to foreground automatically
+    app_navigator.switch_to_drake(dismiss_popups=True)
     dismiss_drake_popups()
     time.sleep(0.2)
 
@@ -596,6 +599,8 @@ def save_and_exit_w2():
         print(msg)
         logs.append(msg)
 
+    # AUTOMATED SOFTWARE NAVIGATION: Bring Drake Tax 2025 to foreground automatically
+    app_navigator.switch_to_drake(dismiss_popups=True)
     dismiss_drake_popups()
     time.sleep(0.2)
 

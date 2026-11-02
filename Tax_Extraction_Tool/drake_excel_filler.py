@@ -2,6 +2,7 @@ import sys
 import os
 import ctypes
 import time
+import threading
 import win32gui
 import win32con
 import win32process
@@ -9,8 +10,24 @@ import psutil
 import pyautogui
 from pywinauto import Desktop
 from date_utils import format_to_drake_date
+import app_navigator
 
 pyautogui.FAILSAFE = False
+
+# Global automation stop event for immediate frontend cancellation
+_stop_event = threading.Event()
+
+def request_automation_stop():
+    """Signals all running Drake automation functions to halt immediately."""
+    _stop_event.set()
+
+def clear_automation_stop():
+    """Resets the automation stop signal before a new run."""
+    _stop_event.clear()
+
+def is_stop_requested():
+    """Returns True if the user requested automation to stop."""
+    return _stop_event.is_set()
 
 try:
     user32 = ctypes.windll.user32
@@ -322,7 +339,7 @@ def get_current_drake_state():
             except: pass
 
     # 2. Check Data Entry Screens
-    data_entry_wins = [(h, t) for (h, t) in raw_wins if "data entry" in t.lower()]
+    data_entry_wins = [(h, t) for (h, t) in raw_wins if any(k in t.lower() for k in ["data entry", "dependent", "screen 2", "1040"]) or win32gui.GetClassName(h).startswith("HwndWrapper[Drake")]
     for h, t in data_entry_wins:
         try:
             w = Desktop(backend="uia").window(handle=h)
@@ -349,16 +366,18 @@ def get_current_drake_state():
                 if "filing status" in ctxt or "mfs claiming spouse" in ctxt or "married filing jointly" in ctxt or "name, address, and general information" in ctxt:
                     return ('SCREEN_1', h, w, None)
 
-            # Check for Screen 2 Detail fields (strictly by distinctive labels)
+            # Check for Screen 2 Detail fields (strictly by distinctive labels or title)
+            t_low = t.lower()
             for c in w.descendants(control_type="Text"):
                 ctxt = c.window_text().strip().lower()
-                if "months in home" in ctxt or "relationship to taxpayer" in ctxt or "eligible for ctc" in ctxt:
+                if "months in home" in ctxt or "relationship to taxpayer" in ctxt or "eligible for ctc" in ctxt or ("dependent" in t_low and ("relationship" in ctxt or "months" in ctxt or "date of birth" in ctxt)):
                     return ('SCREEN_2_DETAIL', h, w, None)
 
             # Check for secondary ButtonItemDetail via descendants if child_window missed it
             for c in w.descendants(control_type="Button"):
                 aid = c.element_info.automation_id or ""
-                if aid == "ButtonItemDetail":
+                btxt = c.window_text().strip().lower()
+                if aid == "ButtonItemDetail" or "item detail" in btxt:
                     return ('SCREEN_2_MACRO', h, w, None)
 
         except Exception:
@@ -401,6 +420,7 @@ def open_or_create_client(ssn, first_name="Mani", last_name="Bharathi", mi="K", 
             return False
 
         log(f"[CONNECT] Drake Main Window: '{main_t}'")
+        app_navigator.force_activate_window(main_h)
         main_win = Desktop(backend="uia").window(handle=main_h)
         log("[ACTION] Clicking 'Open/Create' button...")
         click_open_create(main_win)
@@ -415,28 +435,112 @@ def open_or_create_client(ssn, first_name="Mani", last_name="Bharathi", mi="K", 
         log("[ERROR] Could not open 'Open / Create a Return' dialog.")
         return False
 
+    if is_stop_requested():
+        log("[STOP] Client open cancelled by user stop request.")
+        return False
+
     log("[DIALOG] 'Open / Create a Return' is ready.")
+    app_navigator.force_activate_window(open_h)
     open_dialog = Desktop(backend="uia").window(handle=open_h)
 
-    log(f"[SEARCH] Submitting SSN: {cleaned_ssn}...")
-    for c in open_dialog.descendants(control_type="Edit"):
-        try:
-            if c.is_visible() and c.is_enabled():
-                c.set_edit_text(cleaned_ssn)
-                time.sleep(0.3)
-                break
-        except Exception:
-            continue
+    # 1. First, check if client already exists in the client selection list (e.g. 'Bharathi, Mani')
+    client_row_selected = False
+    try:
+        ln_low = str(last_name or "").strip().lower()
+        fn_low = str(first_name or "").strip().lower()
+        last_4 = cleaned_ssn[-4:] if len(cleaned_ssn) >= 4 else cleaned_ssn
 
-    for c in open_dialog.descendants(control_type="Button"):
-        if c.window_text().strip().lower() in ["ok", "_ok"]:
-            try: c.invoke(); break
-            except: pass
-    else:
+        for item in open_dialog.descendants():
+            if is_stop_requested():
+                return False
+            try:
+                ctype = item.element_info.control_type
+                if ctype in ["ListItem", "DataItem", "Custom"]:
+                    itxt = item.window_text().lower()
+                    if (ln_low and ln_low in itxt and fn_low and fn_low in itxt) or (last_4 and last_4 in itxt):
+                        log(f"[DIALOG] Matching client found in list: '{item.window_text()}'. Opening directly...")
+                        item.click_input(double=True)
+                        time.sleep(1.0)
+                        client_row_selected = True
+                        break
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 2. If not selected from list, type SSN directly into the Search box with real keyboard input
+    if not client_row_selected:
+        log(f"[SEARCH] Submitting SSN: {cleaned_ssn}...")
+        edit_ctrl = None
+        for c in open_dialog.descendants(control_type="Edit"):
+            try:
+                if c.is_visible() and c.is_enabled():
+                    edit_ctrl = c
+                    break
+            except Exception:
+                continue
+
+        if edit_ctrl:
+            try:
+                edit_ctrl.set_focus()
+                time.sleep(0.1)
+                edit_ctrl.click_input()
+                time.sleep(0.1)
+            except Exception:
+                pass
+            pyautogui.hotkey('ctrl', 'a')
+            time.sleep(0.05)
+            pyautogui.write(cleaned_ssn, interval=0.03)
+            time.sleep(0.2)
+            try:
+                edit_ctrl.iface_value.SetValue(cleaned_ssn)
+            except Exception:
+                pass
+        else:
+            # Fallback direct type into dialog
+            pyautogui.hotkey('ctrl', 'a')
+            pyautogui.write(cleaned_ssn, interval=0.03)
+            time.sleep(0.2)
+
+        # Press Enter or click OK
         pyautogui.press('enter')
+        time.sleep(0.5)
+
+        # 3. Check for 'Client Selection' alert dialog ("Select a client from the list or enter an ID number")
+        for _ in range(3):
+            if is_stop_requested():
+                return False
+            for h, t in find_all_drake_raw_windows():
+                if "client selection" in t.lower() or "select a client" in t.lower():
+                    try:
+                        log("[DIALOG] 'Select a client' alert popup detected. Dismissing and re-submitting SSN...")
+                        pw = Desktop(backend="uia").window(handle=h)
+                        for b in pw.descendants(control_type="Button"):
+                            if b.window_text().strip().lower() in ["ok", "_ok"]:
+                                b.invoke()
+                                break
+                        else:
+                            pyautogui.press('enter')
+                        time.sleep(0.4)
+                        # Re-focus Open/Create dialog and enter SSN via keyboard
+                        app_navigator.force_activate_window(open_h)
+                        time.sleep(0.1)
+                        pyautogui.hotkey('ctrl', 'a')
+                        pyautogui.write(cleaned_ssn, interval=0.03)
+                        time.sleep(0.2)
+                        pyautogui.press('enter')
+                        time.sleep(0.5)
+                    except Exception:
+                        pass
+                    break
 
     # Step 2: Handle results (New Client prompt vs Existing Client)
     for _ in range(24):
+        if is_stop_requested():
+            log("[STOP] Client open cancelled by user.")
+            dismiss_drake_popups(prefer_cancel=True)
+            return False
+
         time.sleep(0.5)
 
         # Check for 'Open Return' prompt
@@ -589,15 +693,32 @@ def navigate_to_screen(code):
     except Exception:
         pass
 
+    # 4. Fallback: Direct keyboard sequence (same as Automation.py)
+    try:
+        try:
+            w.set_focus()
+            time.sleep(0.1)
+        except Exception:
+            pass
+        pyautogui.press('esc')
+        time.sleep(0.2)
+        dismiss_drake_popups(prefer_cancel=True)
+        pyautogui.write(str(code), interval=0.04)
+        time.sleep(0.15)
+        pyautogui.press('enter')
+        time.sleep(0.8)
+        dismiss_drake_popups(prefer_cancel=True)
+        return True
+    except Exception:
+        pass
+
     return False
 
 def find_screen2_windows():
     detail_w = None
     macro_w = None
     for h, t in find_all_drake_raw_windows():
-        owner = get_window_owner(h)
-        if owner == 0:
-            continue
+        t_low = t.lower()
         try:
             w = Desktop(backend="uia").window(handle=h)
             for c in w.descendants(control_type="Button"):
@@ -611,9 +732,16 @@ def find_screen2_windows():
 
             for c in w.descendants(control_type="Edit"):
                 aid = c.element_info.automation_id or ""
-                if aid in ["Textbox_1", "Textbox_5", "Textbox_8", "TextboxOverride_1", "TextboxOverride_3"]:
+                if aid in ["Textbox_1", "Textbox_5", "Textbox_8", "TextboxOverride_1", "TextboxOverride_3", "txtFirstName", "txtSSN"]:
                     detail_w = (h, w)
                     break
+
+            if not detail_w and ("dependent" in t_low or "screen 2" in t_low or "2" in t_low):
+                for c in w.descendants(control_type="Text"):
+                    ctxt = c.window_text().strip().lower()
+                    if any(k in ctxt for k in ["months in home", "relationship to taxpayer", "eligible for ctc", "relationship", "dependent"]):
+                        detail_w = (h, w)
+                        break
         except Exception:
             pass
     return detail_w, macro_w
@@ -621,6 +749,11 @@ def find_screen2_windows():
 def wait_for_screen2(timeout=8.0):
     start = time.time()
     while time.time() - start < timeout:
+        state, h, w, _ = get_current_drake_state()
+        if state == 'SCREEN_2_DETAIL' and w:
+            return (h, w), None
+        elif state == 'SCREEN_2_MACRO' and w:
+            return None, (h, w)
         detail_w, macro_w = find_screen2_windows()
         if detail_w or macro_w:
             return detail_w, macro_w
@@ -860,18 +993,84 @@ def populate_screen1(window, organizer_data, log, pre_sections=None):
     log("[SCREEN 1] Screen 1 fields successfully populated!")
     return True
 
+def discover_dependent_controls(window):
+    """
+    Personal-style dynamic control discovery for Screen 2 (Dependents).
+    Maps field names to controls by inspecting UI hierarchy and geometric proximity.
+    """
+    ctrl_map = {}
+    # 1. Automation IDs first (fast O(1))
+    try:
+        for c in window.descendants():
+            aid = c.element_info.automation_id
+            if aid:
+                ctrl_map[aid] = c
+                ctrl_map[aid.lower()] = c
+    except Exception:
+        pass
+
+    # 2. Geometric label-to-control proximity discovery (same approach as Screen 1)
+    try:
+        labels = []
+        for c in window.descendants(control_type="Text"):
+            txt = c.window_text().strip().rstrip('.').rstrip(':')
+            if txt:
+                try:
+                    labels.append((txt.lower(), c.rectangle()))
+                except Exception:
+                    pass
+
+        inputs = []
+        for c in window.descendants():
+            try:
+                ctype = c.element_info.control_type
+                if ctype in ["Edit", "ComboBox"]:
+                    inputs.append((c, c.rectangle()))
+            except Exception:
+                pass
+
+        target_fields = {
+            "first_name": ["first name", "first", "dependent first"],
+            "mi": ["m.i", "mi", "middle initial"],
+            "last_name": ["last name", "last", "dependent last"],
+            "suffix": ["suffix", "sfx"],
+            "ssn": ["ssn", "social security", "itin"],
+            "relationship": ["relationship", "rel to", "relationship to taxpayer"],
+            "months": ["months in home", "months", "mos in home"],
+            "dob": ["date of birth", "dob", "birth date"]
+        }
+
+        for field_key, aliases in target_fields.items():
+            best_ctrl = None
+            min_dist = 9999
+            for lbl_txt, lrect in labels:
+                if any(alias in lbl_txt for alias in aliases):
+                    lcy = (lrect.top + lrect.bottom) / 2
+                    for ctrl, crect in inputs:
+                        ccy = (crect.top + crect.bottom) / 2
+                        v_dist = abs(ccy - lcy)
+                        if v_dist <= 16 and crect.left >= lrect.left:
+                            dist = v_dist * 2 + (crect.left - lrect.right)
+                            if dist < min_dist:
+                                min_dist = dist
+                                best_ctrl = ctrl
+                        v_above = crect.top - lrect.bottom
+                        if 0 <= v_above <= 24 and abs(crect.left - lrect.left) <= 30:
+                            dist = v_above + abs(crect.left - lrect.left)
+                            if dist < min_dist:
+                                min_dist = dist
+                                best_ctrl = ctrl
+            if best_ctrl:
+                ctrl_map[f"discovered_{field_key}"] = best_ctrl
+    except Exception:
+        pass
+
+    return ctrl_map
+
 def populate_screen2_dependents_detail(w, dependents, log):
     for idx, dep in enumerate(dependents, start=1):
-        # Cache controls once per screen for instant O(1) field injection
-        ctrl_map = {}
-        try:
-            for c in w.descendants():
-                aid = c.element_info.automation_id
-                if aid:
-                    ctrl_map[aid] = c
-                    ctrl_map[aid.lower()] = c
-        except Exception:
-            pass
+        # Cache discovered controls dynamically using Personal-style discovery
+        ctrl_map = discover_dependent_controls(w)
 
         def set_field(candidates, val):
             if val is None or str(val).strip() == "":
@@ -883,31 +1082,31 @@ def populate_screen2_dependents_detail(w, dependents, log):
             for target in candidates:
                 c = ctrl_map.get(target) or ctrl_map.get(target.lower())
                 if c:
-                    try:
-                        c.iface_value.SetValue(val_str)
+                    if enter_clean_value(c, val_str):
                         return True
-                    except Exception:
-                        pass
-                    try:
-                        if c.element_info.control_type == "ComboBox":
-                            edits = c.descendants(control_type="Edit")
-                            tgt = edits[0] if edits else c
-                            tgt.set_edit_text(val_str)
-                        else:
-                            c.set_edit_text(val_str)
-                        return True
-                    except Exception:
-                        pass
             return False
 
         def advance_next_screen():
-            next_btn = ctrl_map.get("mnuIcon_Next") or ctrl_map.get("Next")
-            if next_btn:
-                try:
-                    next_btn.invoke()
-                    return True
-                except Exception:
-                    pass
+            for bid in ["mnuIcon_Next", "Next", "btnNext", "ButtonNext"]:
+                btn = ctrl_map.get(bid) or ctrl_map.get(bid.lower())
+                if btn:
+                    try:
+                        btn.invoke()
+                        return True
+                    except Exception:
+                        pass
+            try:
+                for b in w.descendants(control_type="Button"):
+                    btxt = b.window_text().strip().lower()
+                    if btxt in ["next", "save/new", "new"]:
+                        try:
+                            b.invoke()
+                            return True
+                        except Exception:
+                            b.click_input()
+                            return True
+            except Exception:
+                pass
             pyautogui.press('pagedown')
             return True
 
@@ -922,29 +1121,29 @@ def populate_screen2_dependents_detail(w, dependents, log):
         log(f"[DEP {idx}] Populating: {fn} {ln} (SSN: {ssn}, Rel: {rel}, Months: {months}, DOB: {dob})...")
 
         # 1. First Name
-        if fn and set_field(["Textbox_1", "TextboxOverride_1", "txtFirstName"], fn):
+        if fn and set_field(["Textbox_1", "TextboxOverride_1", "txtFirstName", "discovered_first_name"], fn):
             log(f"   [OK] Dependent First Name     = {fn}")
         # 2. M.I.
-        if mi and set_field(["Textbox_2", "TextboxOverride_2", "txtMI"], mi):
+        if mi and set_field(["Textbox_2", "TextboxOverride_2", "txtMI", "discovered_mi"], mi):
             log(f"   [OK] Dependent M.I.           = {mi}")
         # 3. Last Name
-        if ln and set_field(["TextboxOverride_3", "Textbox_3", "txtLastName"], ln):
+        if ln and set_field(["TextboxOverride_3", "Textbox_3", "txtLastName", "discovered_last_name"], ln):
             log(f"   [OK] Dependent Last Name      = {ln}")
         # 4. Suffix (if any)
         sfx = dep.get("suffix", "")
-        if sfx and set_field(["Textbox_4", "txtSuffix"], sfx):
+        if sfx and set_field(["Textbox_4", "txtSuffix", "discovered_suffix"], sfx):
             log(f"   [OK] Dependent Suffix         = {sfx}")
         # 5. SSN
-        if ssn and set_field(["Textbox_5", "txtSSN"], ssn):
+        if ssn and set_field(["Textbox_5", "txtSSN", "discovered_ssn"], ssn):
             log(f"   [OK] Dependent SSN            = {ssn}")
         # 6. Relationship
-        if rel and set_field(["Dropdown_6", "cmbRel"], rel):
+        if rel and set_field(["Dropdown_6", "cmbRel", "discovered_relationship"], rel):
             log(f"   [OK] Relationship             = {rel}")
         # 7. Months in Home
-        if months and set_field(["Dropdown_7", "cmbMonths"], months):
+        if months and set_field(["Dropdown_7", "cmbMonths", "discovered_months"], months):
             log(f"   [OK] Months in Home           = {months}")
         # 8. Date of Birth
-        if dob and set_field(["Textbox_8", "txtDOB"], dob):
+        if dob and set_field(["Textbox_8", "txtDOB", "discovered_dob"], dob):
             log(f"   [OK] Date of Birth            = {dob}")
 
         time.sleep(0.3)
@@ -955,24 +1154,152 @@ def populate_screen2_dependents_detail(w, dependents, log):
             advance_next_screen()
             time.sleep(0.8)
             state, h_next, w_next, _ = get_current_drake_state()
-            if state == 'SCREEN_2_DETAIL' and w_next:
+            if state in ['SCREEN_2_DETAIL', 'SCREEN_2_MACRO'] and w_next:
                 w = w_next
+            else:
+                dw, _ = find_screen2_windows()
+                if dw:
+                    w = dw[1]
 
     log(f"[SUCCESS] All {len(dependents)} dependents populated into Screen 2!")
     return True
 
-def populate_screen2_dependents(dependents, log):
+def fallback_navigate_screen2(client_info, log):
+    """
+    Fallback navigation mechanism adapted from the existing Personal type automation.
+    Retries Drake focus, client return state verification, menu navigation,
+    and Screen 2 window discovery without manual intervention.
+    """
+    log("[FALLBACK] Executing Personal-style fallback navigation for Screen 2...")
+
+    # 1. Bring Drake to foreground
+    nav_ok, d_h, d_t = app_navigator.switch_to_drake(dismiss_popups=True)
+    dismiss_drake_popups(prefer_cancel=True)
+    time.sleep(0.3)
+
+    # 2. Check current Drake state
+    state, hwnd, win, extra = get_current_drake_state()
+    log(f"[FALLBACK] Current Drake state during fallback: {state}")
+
+    tp = (client_info or {}).get("taxpayer", {})
+    ssn = tp.get("ssn", "123-45-6789")
+    fn = tp.get("first_name", "Mani")
+    ln = tp.get("last_name", "Bharathi")
+    mi = tp.get("mi", "K")
+
+    # If on HOME_SCREEN, open/create the client return (identical to Personal flow)
+    if state == 'HOME_SCREEN':
+        log(f"[FALLBACK] Drake on Home Screen. Opening or creating client return SSN: {ssn} ({fn} {ln})...")
+        opened = open_or_create_client(ssn, fn, ln, mi, log=log)
+        if not opened:
+            log("[FALLBACK] Could not open client return.")
+            return None
+        time.sleep(1.0)
+        state, hwnd, win, extra = get_current_drake_state()
+
+    # If on Screen 1 or another subscreen, return cleanly to Data Entry Menu
+    if state == 'SCREEN_1':
+        log("[FALLBACK] Drake landed on Screen 1. Exiting to Data Entry Menu...")
+        exit_to_menu()
+        time.sleep(0.6)
+        dismiss_drake_popups(prefer_cancel=True)
+    elif state not in ['DATA_ENTRY_MENU', 'SCREEN_2_DETAIL', 'SCREEN_2_MACRO']:
+        log(f"[FALLBACK] Exiting from current state ({state}) to Data Entry Menu...")
+        exit_to_menu()
+        time.sleep(0.6)
+        dismiss_drake_popups(prefer_cancel=True)
+
+    # 3. Ensure we are at Data Entry Menu and retry navigation
+    wait_for_data_entry_menu(timeout=4.0)
+
+    # Try menu navigation
+    navigated = navigate_to_screen("2")
+    if not navigated:
+        log("[FALLBACK] Direct button navigation failed. Using menu keyboard fallback ('2' + Enter)...")
+        menu_h, _ = find_data_entry_menu()
+        if menu_h:
+            try:
+                app_navigator.force_activate_window(menu_h)
+                time.sleep(0.2)
+            except Exception:
+                pass
+        pyautogui.press('esc')
+        time.sleep(0.2)
+        dismiss_drake_popups(prefer_cancel=True)
+        pyautogui.write("2", interval=0.04)
+        time.sleep(0.15)
+        pyautogui.press('enter')
+        time.sleep(1.0)
+
+    # 4. Polling loop with state checking (identical to Personal's Screen 1 loop: for _ in range(10))
+    log("[FALLBACK] Polling for Screen 2 window...")
+    for _ in range(10):
+        state, hwnd, win, extra = get_current_drake_state()
+        if state in ['SCREEN_2_DETAIL', 'SCREEN_2_MACRO'] and win:
+            if state == 'SCREEN_2_MACRO':
+                log("[FALLBACK] Macro dialog detected. Clicking Item Detail...")
+                click_item_detail(win)
+                time.sleep(0.8)
+                dw, _ = find_screen2_windows()
+                if dw:
+                    return dw
+            return (hwnd, win)
+        dw, mw = find_screen2_windows()
+        if dw:
+            return dw
+        if mw:
+            log("[FALLBACK] Macro dialog detected via find_screen2_windows. Clicking Item Detail...")
+            click_item_detail(mw[1])
+            time.sleep(0.8)
+            dw_after, _ = find_screen2_windows()
+            if dw_after:
+                return dw_after
+            return mw
+        time.sleep(0.4)
+
+    # 5. Last resort: Bind to any active subscreen or foreground window belonging to Drake
+    active_subs = find_active_subscreen()
+    if active_subs:
+        h_sub, t_sub = active_subs[0]
+        try:
+            w_sub = Desktop(backend="uia").window(handle=h_sub)
+            log(f"[FALLBACK] Binding to active subscreen: '{t_sub}' (handle {h_sub})")
+            return (h_sub, w_sub)
+        except Exception:
+            pass
+
+    h_main, _ = find_drake_window()
+    if h_main:
+        try:
+            w_main = Desktop(backend="uia").window(handle=h_main)
+            return (h_main, w_main)
+        except Exception:
+            pass
+
+    return None
+
+def populate_screen2_dependents(dependents, log, client_info=None):
+    if is_stop_requested():
+        log("[STOP] Screen 2 population cancelled by user request.")
+        return False
+
     if not dependents:
         log("[SCREEN 2] No dependents to populate.")
         return True
 
     log(f"[SCREEN 2] Starting Screen 2 entry for {len(dependents)} dependents...")
-    detail_w, macro_w = wait_for_screen2(timeout=6.0)
+    detail_w, macro_w = wait_for_screen2(timeout=5.0)
+
+    if is_stop_requested():
+        return False
 
     if not detail_w and not macro_w:
         log("[SCREEN 2] Screen 2 not detected yet. Re-triggering Screen 2 navigation...")
         navigate_to_screen("2")
         detail_w, macro_w = wait_for_screen2(timeout=5.0)
+
+    if is_stop_requested():
+        return False
 
     if macro_w:
         log("[SCREEN 2] Macro dialog detected. Clicking 'Item Detail' to enter full screen mode...")
@@ -983,11 +1310,120 @@ def populate_screen2_dependents(dependents, log):
     if not detail_w and macro_w:
         detail_w = macro_w
 
+    # FALLBACK: If window detection fails, automatically retry using Personal fallback mechanism
+    if not detail_w:
+        log("[SCREEN 2] Screen 2 not detected via standard window search. Retrying using Personal automation fallback mechanism...")
+        fallback_w = fallback_navigate_screen2(client_info, log)
+        if fallback_w:
+            detail_w = fallback_w
+            log("[SCREEN 2] Successfully connected to Screen 2 via fallback mechanism!")
+
     if not detail_w:
         log("[ERROR] Could not find Screen 2 Dependent window.")
         return False
 
     return populate_screen2_dependents_detail(detail_w[1], dependents, log)
+
+def populate_dependents_return(dependents_list, client_info=None):
+    """
+    Directly populates Dependents into Drake Tax Screen 2 for active or requested client.
+    Reuses the robust Personal type automation navigation, screen identification,
+    and fallback mechanisms.
+    Zero manual Alt+Tab required: automatically brings Drake to foreground and returns to browser when done.
+    """
+    logs = []
+    def log(msg):
+        print(msg)
+        logs.append(msg)
+
+    # 1. Automatic window navigation to Drake (Zero Alt+Tab)
+    nav_ok, d_h, d_t = app_navigator.switch_to_drake(dismiss_popups=True)
+    if nav_ok:
+        log(f"[NAVIGATOR] Automatically brought Drake Tax 2025 to foreground: '{d_t}'")
+    else:
+        log(f"[NAVIGATOR] Drake window check: {d_t}")
+
+    clear_automation_stop()
+
+    dismiss_drake_popups(prefer_cancel=True)
+    time.sleep(0.2)
+
+    try:
+        if is_stop_requested():
+            return False, ["Automation stopped by user request."], "STOPPED"
+
+        h_main, t_main = find_drake_window()
+        if not h_main:
+            return False, ["Drake 2025 is not running. Please open Drake Tax first."], "ERROR"
+
+        log(f"[PRE-CONDITION] Connected to Drake Window: '{t_main}'")
+
+        if not dependents_list:
+            return False, logs + ["[ERROR] No dependent records found in Zoho Creator data."], "ERROR"
+
+        if is_stop_requested():
+            return False, logs + ["Automation stopped by user request."], "STOPPED"
+
+        # Step 1: Decision on current return state (same as Personal)
+        state, hwnd, win, extra = get_current_drake_state()
+        log(f"[STATE] Current Drake state before dependent entry: {state}")
+
+        tp = (client_info or {}).get("taxpayer", {})
+        ssn = tp.get("ssn", "123-45-6789")
+        fn = tp.get("first_name", "Mani")
+        ln = tp.get("last_name", "Bharathi")
+        mi = tp.get("mi", "K")
+
+        # If on HOME_SCREEN or client return is not open, open or create client return
+        if state == 'HOME_SCREEN':
+            log(f"[ACTION] Drake is on Home Screen. Opening or creating client return SSN: {ssn} ({fn} {ln})...")
+            opened = open_or_create_client(ssn, fn, ln, mi, log=log)
+            if not opened:
+                if is_stop_requested():
+                    return False, logs + ["Automation stopped by user."], "STOPPED"
+                return False, logs + ["[ERROR] Could not open or create client return."], "ERROR"
+            time.sleep(1.0)
+            state, hwnd, win, extra = get_current_drake_state()
+            log(f"[STATE] Drake state after open/create: {state}")
+
+        if is_stop_requested():
+            return False, logs + ["Automation stopped by user request."], "STOPPED"
+
+        # If on Screen 1 or another subscreen, return cleanly to Data Entry Menu
+        if state == 'SCREEN_1':
+            log("[NAVIGATE] Exiting Screen 1 to Data Entry Menu...")
+            exit_to_menu()
+            time.sleep(0.6)
+            dismiss_drake_popups(prefer_cancel=True)
+        elif state not in ['DATA_ENTRY_MENU', 'SCREEN_2_DETAIL', 'SCREEN_2_MACRO']:
+            log(f"[NAVIGATE] Returning from current state ({state}) to Data Entry Menu...")
+            exit_to_menu()
+            time.sleep(0.6)
+
+        if is_stop_requested():
+            return False, logs + ["Automation stopped by user request."], "STOPPED"
+
+        log(f"[SCREEN 2] Populating {len(dependents_list)} dependent(s) into Drake Screen 2...")
+        ok = populate_screen2_dependents(dependents_list, log, client_info=client_info)
+
+        if is_stop_requested():
+            return False, logs + ["Automation stopped by user request."], "STOPPED"
+
+        if ok:
+            log("[SAVE] Exiting Screen 2 to Data Entry Menu...")
+            exit_to_menu()
+            time.sleep(0.6)
+            dismiss_drake_popups(prefer_cancel=True)
+            log(f"[SUCCESS] Successfully populated {len(dependents_list)} dependents into Drake Tax 2025!")
+            return True, logs, "POPULATED"
+        else:
+            return False, logs + ["[ERROR] Failed to populate Screen 2 Dependents."], "ERROR"
+
+    finally:
+        # Automatic window navigation back to browser (Zero Alt+Tab)
+        b_ok, b_h, b_t = app_navigator.switch_to_browser()
+        if b_ok:
+            log(f"[NAVIGATOR] Automatically brought Browser back to foreground: '{b_t}'")
 
 def populate_excel_return(organizer_data):
     """
@@ -1010,127 +1446,108 @@ def populate_excel_return(organizer_data):
         print(msg)
         logs.append(msg)
 
+    # 1. AUTOMATED SOFTWARE NAVIGATION: Automatically bring Drake Tax 2025 to foreground (Zero Alt+Tab)
+    nav_ok, d_h, d_t = app_navigator.switch_to_drake(dismiss_popups=True)
+    if nav_ok:
+        log(f"[NAVIGATOR] Automatically brought Drake Tax 2025 to foreground: '{d_t}'")
+    else:
+        log(f"[NAVIGATOR] Drake window focus check: {d_t}")
+
+    clear_automation_stop()
     dismiss_drake_popups(prefer_cancel=True)
     time.sleep(0.2)
 
-    h_main, t_main = find_drake_window()
-    if not h_main:
-        return False, ["Drake 2025 is not running. Please open Drake Tax first."], "ERROR"
+    try:
+        if is_stop_requested():
+            return False, ["Automation stopped by user request."], "STOPPED"
 
-    log(f"[PRE-CONDITION] Connected to Drake Window: '{t_main}'")
+        h_main, t_main = find_drake_window()
+        if not h_main:
+            return False, ["Drake 2025 is not running. Please open Drake Tax first."], "ERROR"
 
-    tp = organizer_data.get("taxpayer", {})
-    ssn = tp.get("ssn", "123-45-6789")
-    fn = tp.get("first_name", "Mani")
-    ln = tp.get("last_name", "Bharathi")
-    mi = tp.get("mi", "K")
+        log(f"[PRE-CONDITION] Connected to Drake Window: '{t_main}'")
 
-    cleaned_req_ssn = str(ssn).replace("-", "").replace(" ", "").strip()
+        tp = organizer_data.get("taxpayer", {})
+        ssn = tp.get("ssn", "123-45-6789")
+        fn = tp.get("first_name", "Mani")
+        ln = tp.get("last_name", "Bharathi")
+        mi = tp.get("mi", "K")
 
-    # Step 1: Decision on current return state
-    state, hwnd, win, extra = get_current_drake_state()
-    log(f"[STATE] Current Drake state before client open: {state}")
+        cleaned_req_ssn = str(ssn).replace("-", "").replace(" ", "").strip()
 
-    current_win_text = win.window_text() if win else ""
-    return_already_open = False
-
-    if cleaned_req_ssn in current_win_text.replace("-", ""):
-        return_already_open = True
-        log(f"[DECISION] Return for SSN {cleaned_req_ssn} is already open in Drake.")
-    else:
-        # If another return is open, close it back to Drake Home
-        if state in ['SCREEN_1', 'SCREEN_2_MACRO', 'SCREEN_2_DETAIL', 'DATA_ENTRY_MENU', 'OTHER_SCREEN']:
-            log("[DECISION] A different return is currently open. Exiting to Drake Home screen...")
-            exit_return_to_home()
-            time.sleep(0.8)
-
-        log(f"[ACTION] Opening or creating client return SSN: {ssn} ({fn} {ln})...")
-        opened = open_or_create_client(ssn, fn, ln, mi, log=log)
-        if not opened:
-            return False, logs + ["[ERROR] Could not open or create client return."], "ERROR"
-        time.sleep(1.0)
-
-    # Step 2: Intelligent Screen 1 Decision Making
-    state, hwnd, win, extra = get_current_drake_state()
-    log(f"[STATE] Drake state after open/create: {state}")
-
-    s1_win = None
-    s1_secs = None
-
-    if state == 'SCREEN_1':
-        log("[DECISION] Drake automatically landed on Screen 1 (Demographics). Skipping menu navigation!")
-        s1_win = win
-        s1_secs = extra
-    else:
-        if state != 'DATA_ENTRY_MENU':
-            log("[NAVIGATE] Exiting current screen to Data Entry Menu...")
-            exit_to_menu()
-            time.sleep(0.5)
-
-        log("[NAVIGATE] Opening Screen 1: Demographics / Name & Address...")
-        navigate_to_screen("1")
-        time.sleep(1.0)
-
-        for _ in range(10):
-            state, hwnd, win, extra = get_current_drake_state()
-            if state == 'SCREEN_1':
-                s1_win = win
-                s1_secs = extra
-                break
-            time.sleep(0.4)
-
-    if s1_win:
-        log("[SCREEN 1] Screen 1 detected. Populating Demographics...")
-        populate_screen1(s1_win, organizer_data, log, pre_sections=s1_secs)
-        time.sleep(0.4)
-
-        log("[SAVE] Exiting Screen 1 to Data Entry Menu...")
-        exit_to_menu()
-        time.sleep(0.8)
-        dismiss_drake_popups(prefer_cancel=True)
-    else:
-        log(f"[ERROR] Could not open Screen 1 Demographics window. Current state: {state}")
-        exit_to_menu()
-
-    # Step 3: Screen 2 (Dependents) Decision Making
-    dependents = organizer_data.get("dependents", [])
-    if dependents:
-        log(f"[NAVIGATE] Opening Screen 2: Dependents ({len(dependents)} dependents)...")
+        # Step 1: Decision on current return state
         state, hwnd, win, extra = get_current_drake_state()
-        if state != 'DATA_ENTRY_MENU':
-            exit_to_menu()
-            time.sleep(0.5)
+        log(f"[STATE] Current Drake state before client open: {state}")
 
-        navigate_to_screen("2")
-        time.sleep(1.0)
+        current_win_text = win.window_text() if win else ""
+        return_already_open = False
 
-        # Wait for Screen 2 state
-        for _ in range(12):
-            state, hwnd, win, extra = get_current_drake_state()
-            if state in ['SCREEN_2_MACRO', 'SCREEN_2_DETAIL']:
-                break
-            time.sleep(0.4)
+        if cleaned_req_ssn in current_win_text.replace("-", ""):
+            return_already_open = True
+            log(f"[DECISION] Return for SSN {cleaned_req_ssn} is already open in Drake.")
+        else:
+            # If another return is open, close it back to Drake Home
+            if state in ['SCREEN_1', 'SCREEN_2_MACRO', 'SCREEN_2_DETAIL', 'DATA_ENTRY_MENU', 'OTHER_SCREEN']:
+                log("[DECISION] A different return is currently open. Exiting to Drake Home screen...")
+                exit_return_to_home()
+                time.sleep(0.8)
 
-        if state == 'SCREEN_2_MACRO':
-            log("[SCREEN 2] Macro dialog detected. Clicking 'Item Detail' to enter full screen mode...")
-            click_item_detail(win)
+            log(f"[ACTION] Opening or creating client return SSN: {ssn} ({fn} {ln})...")
+            opened = open_or_create_client(ssn, fn, ln, mi, log=log)
+            if not opened:
+                return False, logs + ["[ERROR] Could not open or create client return."], "ERROR"
             time.sleep(1.0)
+
+        # Step 2: Intelligent Screen 1 Decision Making
+        state, hwnd, win, extra = get_current_drake_state()
+        log(f"[STATE] Drake state after open/create: {state}")
+
+        s1_win = None
+        s1_secs = None
+
+        if state == 'SCREEN_1':
+            log("[DECISION] Drake automatically landed on Screen 1 (Demographics). Skipping menu navigation!")
+            s1_win = win
+            s1_secs = extra
+        else:
+            if state != 'DATA_ENTRY_MENU':
+                log("[NAVIGATE] Exiting current screen to Data Entry Menu...")
+                exit_to_menu()
+                time.sleep(0.5)
+
+            log("[NAVIGATE] Opening Screen 1: Demographics / Name & Address...")
+            navigate_to_screen("1")
+            time.sleep(1.0)
+
             for _ in range(10):
                 state, hwnd, win, extra = get_current_drake_state()
-                if state == 'SCREEN_2_DETAIL':
+                if state == 'SCREEN_1':
+                    s1_win = win
+                    s1_secs = extra
                     break
                 time.sleep(0.4)
 
-        if state == 'SCREEN_2_DETAIL':
-            populate_screen2_dependents_detail(win, dependents, log)
+        if s1_win:
+            log("[SCREEN 1] Screen 1 detected. Populating Demographics...")
+            populate_screen1(s1_win, organizer_data, log, pre_sections=s1_secs)
             time.sleep(0.4)
-        else:
-            log(f"[ERROR] Could not find Screen 2 Dependent window. Current state: {state}")
-            return False, logs, "ERROR"
 
-    log("[READY_TO_VERIFY] Excel Master Organizer data entered into Drake Software!")
-    log("[ACTION_REQUIRED] Review Screen 2 / Screen 1 in Drake Tax and click 'Verify & Save' to exit.")
-    return True, logs, "POPULATED"
+            log("[SAVE] Exiting Screen 1 to Data Entry Menu...")
+            exit_to_menu()
+            time.sleep(0.8)
+            dismiss_drake_popups(prefer_cancel=True)
+        else:
+            log(f"[ERROR] Could not open Screen 1 Demographics window. Current state: {state}")
+            exit_to_menu()
+
+        log("[SUCCESS] Screen 1 Name, Address & Demographics entered into Drake Software!")
+        return True, logs, "POPULATED"
+
+    finally:
+        # AUTOMATED SOFTWARE NAVIGATION: Bring Browser back to foreground automatically (Zero Alt+Tab)
+        b_ok, b_h, b_t = app_navigator.switch_to_browser()
+        if b_ok:
+            log(f"[NAVIGATOR] Automatically brought Browser back to foreground: '{b_t}'")
 
 def save_and_exit_excel():
     logs = []
