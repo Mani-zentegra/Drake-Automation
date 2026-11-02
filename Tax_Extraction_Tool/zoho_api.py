@@ -165,6 +165,49 @@ def fetch_creator_record(record_id, report_link_name=None, return_raw=False):
     except Exception as e:
         return None, f"Request to Zoho Creator failed: {str(e)}"
 
+def update_creator_record_status(record_id, report_link_name, status="Finished", message=""):
+    """
+    Updates Drake_Status and Drake_Message on the Zoho Creator record via REST API v2.1.
+    """
+    cfg = load_zoho_config()
+    token, err = get_valid_access_token()
+    if not token:
+        return False, err or "No valid access token available."
+
+    domain = cfg.get("domain", "creator.zoho.in")
+    owner = cfg.get("owner_name", "zentegraindia")
+    app = cfg.get("app_link_name", "drake-automation")
+    report = report_link_name or cfg.get("report_link_name", "All_Personal_Infos")
+
+    url = f"https://{domain}/api/v2.1/{owner}/{app}/report/{report}/{record_id}"
+    headers = {
+        "Authorization": f"Zoho-oauthtoken {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "data": {
+            "Drake_Status": status,
+            "Drake_Message": str(message)[:250] if message else ""
+        }
+    }
+
+    try:
+        resp = requests.patch(url, json=payload, headers=headers, timeout=15)
+        if resp.status_code == 401:
+            cfg["token_expiry"] = 0
+            save_zoho_config(cfg)
+            token, _ = get_valid_access_token()
+            if token:
+                headers["Authorization"] = f"Zoho-oauthtoken {token}"
+                resp = requests.patch(url, json=payload, headers=headers, timeout=15)
+
+        data = resp.json()
+        if resp.status_code == 200 and data.get("code") in (3000, 0, None):
+            return True, None
+        return False, data.get("message") or str(data)
+    except Exception as e:
+        return False, str(e)
+
 def fetch_creator_forms():
     """
     Fetches all available forms in the Zoho Creator application using the Meta API:

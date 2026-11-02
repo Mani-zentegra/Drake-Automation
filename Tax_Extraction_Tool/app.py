@@ -407,6 +407,15 @@ def api_insert_into_drake():
             else:
                 message = f"Drake entry notification: {logs[-1] if logs else 'Please verify Drake is running'}"
 
+            # Auto-update Zoho Creator Status field
+            try:
+                creator_status = "Finished" if success else ("Error" if status != "STOPPED" else "In Progress")
+                zoho_api.update_creator_record_status(record_id, report, status=creator_status, message=message)
+                if linked_tp_id:
+                    zoho_api.update_creator_record_status(str(linked_tp_id), "All_Personal_Infos", status=creator_status, message=message)
+            except Exception:
+                pass
+
             return jsonify({
                 "success": success,
                 "status": status,
@@ -445,6 +454,13 @@ def api_insert_into_drake():
                 f"(Screen 1 Name, Address & Demographics)! Review in Drake on your desktop."
                 if success else f"Drake entry notification: {logs[-1] if logs else 'Please verify Drake is running'}"
             )
+
+            # Auto-update Zoho Creator Status field
+            try:
+                creator_status = "Finished" if success else ("Error" if status != "STOPPED" else "In Progress")
+                zoho_api.update_creator_record_status(record_id, report, status=creator_status, message=message)
+            except Exception:
+                pass
 
             return jsonify({
                 "success": success,
