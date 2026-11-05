@@ -417,6 +417,13 @@ def _relate(forms, relations, checks):
 # ---------------------------------------------------------------------------
 @packet_bp.route("/drake-modules")
 def page():
+    # The module screens now live in the guided review workflow (all forms + fields shown automatically).
+    from flask import redirect
+    return redirect("/review")
+
+
+@packet_bp.route("/drake-modules/classic")
+def page_classic():
     return render_template("drake_modules.html")
 
 

@@ -365,66 +365,41 @@ def _exit_to_menu(window, filler, Desktop, log):
     return None
 
 
-def goto_w2_screen(client, log):
-    """Bring Drake forward and make sure Screen W2 is open. Returns (hwnd, uia_window)."""
+def goto_w2_screen(client, log, record=None):
+    """Bring Drake forward, open (or create) the client's return and open Screen W2.
+    record=None opens a NEW W-2 record (never overwrites an existing W-2); record=N opens W-2 number N.
+    Returns (hwnd, uia_window). Uses the navigation verified against Drake 2025 in taxflow/transfer.py:
+    'does not exist -> create' + New Return dialog, the Existing Forms List, and a check that the screen is W2."""
     filler, nav, Desktop = _drake_modules()
-    nav.switch_to_drake(dismiss_popups=True)
-    filler.dismiss_drake_popups()
-    hwnd, title = filler.find_drake_window()
-    if not hwnd:
-        raise RuntimeError("Drake 2025 is not open. Please start Drake first.")
-    log(f"[DRAKE] Connected to '{title}'")
-    window = Desktop(backend="uia").window(handle=hwnd)
-
-    if "data entry" not in title.lower():
-        ssn = re.sub(r"\D", "", str((client or {}).get("ssn", "")))
+    import drake_packet_filler as pf
+    from taxflow import transfer as T
+    try:
+        nav.switch_to_drake(dismiss_popups=False)
+    except Exception:
+        pass
+    if T._exit_prompt_open():
+        raise RuntimeError("Drake is asking whether to exit the program - click No in Drake, then try again.")
+    ssn = re.sub(r"\D", "", str((client or {}).get("ssn", "")))
+    menu = pf.find_menu_window()
+    if menu:
+        if ssn and ssn not in re.sub(r"\D", "", menu[1]):
+            raise RuntimeError(f"Drake has a different return open ('{menu[1]}'). Close it in Drake, then send again.")
+        log(f"[DRAKE] Using the open return: {menu[1]}")
+    else:
         if len(ssn) != 9:
             raise RuntimeError("No return is open in Drake and no valid employee SSN is mapped, "
                                "so the tool cannot pick the client. Map 'Employee SSN' or open the return in Drake.")
         first, mi, last = _split_name((client or {}).get("name", ""))
         if not (first and last):
             raise RuntimeError("Employee name is needed to open/create the return. Map 'Employee name'.")
-        log(f"[DRAKE] Opening return for SSN ***-**-{ssn[-4:]} ...")
-        if not filler.open_or_create_client(ssn, first, last, mi):
-            raise RuntimeError("Could not open or create the client return in Drake.")
-        time.sleep(1.0)
-        hwnd, title = filler.find_drake_window()
-        window = Desktop(backend="uia").window(handle=hwnd)
-    else:
-        ssn = re.sub(r"\D", "", str((client or {}).get("ssn", "")))
-        if ssn and ssn not in re.sub(r"\D", "", title):
-            log("[WARN] A return is already open in Drake; confirm it belongs to this employee before saving.")
-
-    state = filler.get_current_drake_state(window)
-    if state == "W2_SCREEN":
-        return hwnd, window
-    if state != "MENU_SCREEN":
-        log(f"[NAVIGATE] On {state}; returning to the Data Entry Menu...")
-        window = _exit_to_menu(window, filler, Desktop, log)
-        if window is None:
-            raise RuntimeError("Could not return to the Data Entry Menu in Drake.")
-
-    log("[NAVIGATE] Opening Screen W2 (W2|Wages)...")
-    clicked = False
-    for b in window.descendants(control_type="Button"):
-        if "w2|wages" in b.window_text().strip().lower():
-            try:
-                b.invoke()
-                clicked = True
-                break
-            except Exception:
-                pass
-    if not clicked:
-        raise RuntimeError("Could not find the 'W2|Wages' button on the Data Entry Menu.")
-    for _ in range(30):
-        time.sleep(0.15)
-        h, _ = filler.find_drake_window()
-        if h:
-            w = Desktop(backend="uia").window(handle=h)
-            if filler.get_current_drake_state(w) == "W2_SCREEN":
-                log("[NAVIGATE] Screen W2 is open.")
-                return h, w
-    raise RuntimeError("Screen W2 did not open in Drake.")
+        T.open_return(ssn, first, mi, last, log, pf, nav, Desktop)
+    if pf.find_subscreen_window():
+        pf.exit_current_subscreen(log)
+        time.sleep(0.5)
+    n = int(record) if record else 10000            # 10000 -> the forms list's "New Record" row
+    win = T.open_record("W2", n, log, pf, Desktop, create=True)
+    hs = T._visible_screens(Desktop)
+    return (hs[-1] if hs else None), win
 
 
 def _collect_controls(w2_win):

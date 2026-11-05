@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "drake-review-test",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["Tax_Extraction_Tool/app.py"],
+      "env": {"PORT": "5051", "PYTHONIOENCODING": "utf-8"},
+      "port": 5051
+    }
+  ]
+}

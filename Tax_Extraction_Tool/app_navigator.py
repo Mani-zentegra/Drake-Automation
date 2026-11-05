@@ -250,6 +250,10 @@ def dismiss_unexpected_popups(max_passes=2, prefer_cancel=False):
                 if is_dialog:
                     try:
                         w = Desktop(backend="uia").window(handle=h)
+                        # NEVER answer Drake's "exit the program?" prompt automatically (Yes/Close would quit Drake).
+                        if "close program" in t_lower or any("want to exit" in (x.window_text() or "").lower()
+                                                              for x in w.descendants(control_type="Text")):
+                            return
                         buttons = w.descendants(control_type="Button")
                         
                         target_words = ["cancel", "no", "_cancel", "_no"] if prefer_cancel else ["ok", "yes", "_ok", "_yes", "save", "continue", "close"]

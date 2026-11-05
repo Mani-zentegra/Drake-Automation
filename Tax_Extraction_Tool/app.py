@@ -27,6 +27,9 @@ from drake_view import drake_view_bp
 app.register_blueprint(drake_view_bp)
 from packet_analysis import packet_bp
 app.register_blueprint(packet_bp)
+# Dynamic tax-packet platform: Upload -> Analyze -> Drake module screens -> Review -> Transfer (/review)
+from taxflow.routes import review_bp
+app.register_blueprint(review_bp)
 app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(__file__), "uploads")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0

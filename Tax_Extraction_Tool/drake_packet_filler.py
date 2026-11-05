@@ -121,8 +121,6 @@ MENU_BUTTONS = {
     "DIV": "LINK_0_Col0_Sel13",
     "1099": "LINK_0_Col0_Sel12",
     "A": "LINK_0_Col1_Sel35",
-    "D": "LINK_0_Col0_Sel15",
-    "ROTH": "LINK_0_Col1_Sel17"
 }
 
 def open_drake_screen(screen_code, log_fn=print):
@@ -209,7 +207,13 @@ def dismiss_drake_popups(prefer_cancel=True, log_fn=None):
                     
                     dialog_texts = [x.window_text().lower() for x in w.descendants(control_type="Text") if x.window_text()]
                     full_txt = " ".join(dialog_texts)
-                    
+
+                    # NEVER answer Drake's "exit the program?" prompt automatically (Yes would close Drake).
+                    if "close program" in t.lower() or "exit drake" in full_txt or "want to exit" in full_txt:
+                        if log_fn:
+                            log_fn("[POPUP] Drake is asking whether to EXIT the program — left for the user to answer.")
+                        return
+
                     # 1. E-FILE WARNING ALERT: Click CANCEL (auto_id '2' or 'Cancel') to exit!
                     if "fields on this screen" in full_txt or "e-file" in full_txt or "to exit this screen" in full_txt:
                         for btn in w.descendants(control_type="Button"):
@@ -459,19 +463,14 @@ def set_field(edits_dict, aid, value, field_name, log_fn):
         val_str = val_str.replace("$", "").replace(",", "").strip()
 
     ed = edits_dict.get(aid)
-    if ed:
-        try:
-            try:
-                ed.iface_value.SetValue(val_str)
-                log_fn(f"[OK] {field_name} = {val_str}")
-                return True
-            except Exception:
-                pass
-            ed.set_edit_text(val_str)
-            log_fn(f"[OK] {field_name} = {val_str}")
-            return True
-        except Exception as ex:
-            log_fn(f"[WARN] Failed to set {field_name} ({aid}): {ex}")
+    if not ed:
+        log_fn(f"[WARN] {field_name}: field {aid} is not on this Drake screen — not entered")
+        return False
+    from drake_w2_filler import enter_clean_value      # focus-checked entry + Tab so Drake keeps the value
+    if enter_clean_value(ed, val_str):
+        log_fn(f"[OK] {field_name} = {val_str}")
+        return True
+    log_fn(f"[WARN] {field_name}: Drake did not take the value (field read-only or could not be focused)")
     return False
 
 def set_combo_text(combos_dict, aid, value, field_name, log_fn):
@@ -481,434 +480,284 @@ def set_combo_text(combos_dict, aid, value, field_name, log_fn):
     val_str = str(value).strip() if value is not None else ""
     if not val_str:
         return False
+    from drake_w2_filler import enter_clean_value
     ed = combos_dict.get(f"{aid}_edit")
-    if ed:
-        try:
-            ed.iface_value.SetValue(val_str)
-            log_fn(f"[OK] {field_name} = {val_str}")
-            return True
-        except Exception:
-            try:
-                ed.set_edit_text(val_str)
-                log_fn(f"[OK] {field_name} = {val_str}")
-                return True
-            except Exception:
-                pass
-    cb = combos_dict.get(aid)
-    if cb:
-        try:
-            cb.iface_value.SetValue(val_str)
-            log_fn(f"[OK] {field_name} = {val_str}")
-            return True
-        except Exception:
-            pass
-        try:
-            for ed in cb.descendants(control_type="Edit"):
-                try:
-                    ed.iface_value.SetValue(val_str)
-                    log_fn(f"[OK] {field_name} = {val_str}")
-                    return True
-                except Exception:
-                    ed.set_edit_text(val_str)
-                    log_fn(f"[OK] {field_name} = {val_str}")
-                    return True
-        except Exception:
-            pass
+    if ed is None and combos_dict.get(aid) is not None:
+        inner = combos_dict[aid].descendants(control_type="Edit")
+        ed = inner[0] if inner else combos_dict[aid]
+    if ed is None:
+        log_fn(f"[WARN] {field_name}: field {aid} is not on this Drake screen — not entered")
+        return False
+    if enter_clean_value(ed, val_str):
+        log_fn(f"[OK] {field_name} = {val_str}")
+        return True
+    log_fn(f"[WARN] {field_name}: Drake did not take the value")
     return False
 
+
+def set_checkbox(checks_dict, aid, want, field_name, log_fn):
+    """Set a Drake check box to the wanted state (the old code toggled blindly, which UN-ticks a ticked box)."""
+    cb = checks_dict.get(aid)
+    if cb is None:
+        log_fn(f"[WARN] {field_name}: check box {aid} is not on this Drake screen")
+        return False
+    try:
+        if bool(cb.get_toggle_state()) != bool(want):
+            cb.toggle()
+        log_fn(f"[OK] {field_name} = {'checked' if want else 'not checked'}")
+        return True
+    except Exception as ex:
+        log_fn(f"[WARN] {field_name}: {ex}")
+        return False
+
+# Field ids below were read from the real Drake Tax 2025 screens on 2026-11-05 (each input matched to its label).
+# The same verified ids drive the /review transfer (taxflow/catalog.py VERIFIED_AIDS).
+
+def _money(v):
+    return clean_amt(v) if v not in (None, "") else ""
+
+
+def _nonzero(v):
+    try:
+        return float(str(v).replace(",", "").replace("$", "")) != 0
+    except (TypeError, ValueError):
+        return False
+
+
 def populate_w2_data(sub_w, data, log_fn):
-    """
-    Populates Form W-2 fields matching Drake Tax Screen W-2 in under 50ms.
-    NOTE: Textbox_2 is the 'F' code field and MUST NOT be touched.
-    """
+    """Screen W2. Only values present in `data` are typed — no client defaults are ever filled in."""
     edits, combos, checkboxes = get_screen_controls(sub_w)
-    
-    # TS Code: T (Taxpayer) or S (Spouse)
-    ts_code = data.get("ts_code", "T").upper()
-    set_combo_text(combos, "Dropdown_1", ts_code, "TS Code", log_fn)
-
-    # Employer Information
-    clean_ein = str(data.get("ein") or data.get("employer_ein") or "").replace("-", "").strip()
-    set_field(edits, "Textbox_4", clean_ein, "Employer EIN (Box b)", log_fn)
-    set_field(edits, "Textbox_5", data.get("payer") or data.get("employer_name"), "Employer Name (Box c)", log_fn)
-    set_field(edits, "Textbox_7", data.get("employer_address"), "Employer Street", log_fn)
+    set_field(edits, "Textbox_4", clean_tin(data.get("ein") or data.get("employer_ein")), "Employer EIN (Box b)", log_fn)
+    set_combo_text(combos, "Dropdown_1", (data.get("ts_code") or "T").upper(), "TS Code", log_fn)
+    set_field(edits, "Textbox_5", data.get("employer_name") or data.get("payer"), "Employer Name (Box c)", log_fn)
+    set_field(edits, "Textbox_7", data.get("employer_street") or data.get("employer_address"), "Employer Street", log_fn)
     set_field(edits, "Textbox_8", data.get("employer_city"), "Employer City", log_fn)
+    set_combo_text(combos, "Dropdown_9", data.get("employer_state"), "Employer State", log_fn)
+    set_field(edits, "Textbox_10", data.get("employer_zip"), "Employer ZIP", log_fn)
+    for aid, keys, name in (("Textbox_23", ("box1_wages", "wages"), "Box 1 Wages"),
+                            ("Textbox_24", ("box2_fed_withheld", "fed_withholding"), "Box 2 Fed Tax Withheld"),
+                            ("Textbox_25", ("box3_ss_wages", "ss_wages"), "Box 3 SS Wages"),
+                            ("Textbox_26", ("box4_ss_tax", "ss_tax"), "Box 4 SS Tax"),
+                            ("Textbox_27", ("box5_medicare_wages", "medicare_wages"), "Box 5 Medicare Wages"),
+                            ("Textbox_28", ("box6_medicare_tax", "medicare_tax"), "Box 6 Medicare Tax")):
+        set_field(edits, aid, _money(next((data.get(k) for k in keys if data.get(k)), "")), name, log_fn)
+    for slot, code_aid, amt_aid in (("a", "Dropdown_34", "Textbox_35"), ("b", "Dropdown_37", "Textbox_38"),
+                                    ("c", "Dropdown_40", "Textbox_41"), ("d", "Dropdown_43", "Textbox_44")):
+        code, amt = data.get(f"box12{slot}_code"), data.get(f"box12{slot}_amount")
+        if code and _nonzero(amt):
+            set_combo_text(combos, code_aid, str(code).upper(), f"Box 12{slot} Code", log_fn)
+            set_field(edits, amt_aid, _money(amt), f"Box 12{slot} Amount", log_fn)
+    if "box13_retirement_plan" in data:
+        set_checkbox(checkboxes, "CheckboxTextRight_47", bool(data.get("box13_retirement_plan")), "Box 13 Retirement plan", log_fn)
 
-    # Employer State & ZIP
-    emp_state = data.get("employer_state", "WY")
-    set_combo_text(combos, "Dropdown_9", emp_state, "Employer State", log_fn)
-    set_field(edits, "Textbox_10", data.get("employer_zip") or "82601", "Employer ZIP", log_fn)
-
-    # Box 1 to 6
-    set_field(edits, "Textbox_23", data.get("box1_wages") or data.get("wages"), "Box 1 Wages", log_fn)
-    set_field(edits, "Textbox_24", data.get("box2_fed_withheld") or data.get("fed_withholding"), "Box 2 Fed Tax Withheld", log_fn)
-    set_field(edits, "Textbox_25", data.get("box3_ss_wages") or data.get("ss_wages"), "Box 3 SS Wages", log_fn)
-    set_field(edits, "Textbox_26", data.get("box4_ss_tax") or data.get("ss_tax"), "Box 4 SS Tax", log_fn)
-    set_field(edits, "Textbox_27", data.get("box5_medicare_wages") or data.get("medicare_wages"), "Box 5 Medicare Wages", log_fn)
-    set_field(edits, "Textbox_28", data.get("box6_medicare_tax") or data.get("medicare_tax"), "Box 6 Medicare Tax", log_fn)
-
-    # Box 12a / 12b
-    b12a_code = data.get("box12a_code") or "D"
-    b12a_amt = data.get("box12a_amount") or "11750.00"
-    b12b_code = data.get("box12b_code") or "DD"
-    b12b_amt = data.get("box12b_amount") or "12500.00"
-    set_combo_text(combos, "Dropdown_34", b12a_code, "Box 12a Code", log_fn)
-    set_field(edits, "Textbox_35", b12a_amt, "Box 12a Amount", log_fn)
-    set_combo_text(combos, "Dropdown_37", b12b_code, "Box 12b Code", log_fn)
-    set_field(edits, "Textbox_38", b12b_amt, "Box 12b Amount", log_fn)
-
-    # Box 13 Retirement Plan
-    if data.get("box13_retirement_plan"):
-        checked = False
-        for cbid in ["CheckboxTextRight_47", "CheckBox_2", "retire"]:
-            cb = checkboxes.get(cbid)
-            if cb:
-                try:
-                    cb.toggle()
-                    log_fn("[OK] Box 13 Retirement Plan checked!")
-                    checked = True
-                    break
-                except Exception:
-                    try:
-                        cb.iface_toggle.Toggle()
-                        log_fn("[OK] Box 13 Retirement Plan checked!")
-                        checked = True
-                        break
-                    except Exception:
-                        pass
-        if not checked:
-            for cid, cb in checkboxes.items():
-                if "retire" in cid.lower() or "retire" in (cb.window_text() or "").lower():
-                    try:
-                        cb.toggle()
-                        log_fn("[OK] Box 13 Retirement Plan checked!")
-                        break
-                    except Exception:
-                        pass
 
 def populate_ssa_data(sub_w, data, log_fn):
-    """
-    Populates Form SSA-1099 fields instantly (<30ms).
-    """
+    """Screen SSA: net benefits = Textbox_4, federal tax withheld (SSA-1099 box 6) = Textbox_7."""
     edits, combos, _ = get_screen_controls(sub_w)
-    
-    # TS Code: Dropdown / Edit
-    if not set_combo_text(combos, "Dropdown_1", "T", "TS Code", log_fn):
-        ed_ts = edits.get("PART_EditableTextBox") or edits.get("Textbox_1")
-        if ed_ts:
-            try:
-                ed_ts.iface_value.SetValue("T")
-                log_fn("[OK] TS Code = T (Taxpayer)")
-            except Exception:
-                ed_ts.set_edit_text("T")
+    set_combo_text(combos, "Dropdown_1", "T", "TS Code", log_fn)
+    set_field(edits, "Textbox_4", _money(data.get("net_benefits") or data.get("box5_net_benefits") or data.get("box5")), "Box 5 Net Benefits", log_fn)
+    fed = data.get("box6") or data.get("fed_tax_withheld")
+    if _nonzero(fed):
+        set_field(edits, "Textbox_7", _money(fed), "Box 6 Federal tax withheld", log_fn)
+    if _nonzero(data.get("tax_withheld") or data.get("box7_tax_withheld")) and not fed:
+        log_fn("[INFO] SSA-1042S tax withheld is nonresident withholding — not entered on Screen SSA; review it in Drake.")
 
-    set_field(edits, "Textbox_5", data.get("net_benefits") or data.get("box5_net_benefits"), "Box 5 Net SSA Benefits", log_fn)
-    set_field(edits, "Textbox_7", data.get("tax_withheld") or data.get("box7_tax_withheld"), "Box 7 Tax Withheld", log_fn)
 
 def populate_int_data(sub_w, data, log_fn):
-    """
-    Populates Form 1099-INT fields instantly (<30ms).
-    """
+    """Screen INT (opened through Item Detail when Drake shows its grid)."""
     edits, combos, _ = get_screen_controls(sub_w)
-    
+    set_field(edits, "Textbox_7", clean_tin(data.get("payer_tin")), "Payer TIN", log_fn)   # TIN first: Drake refills the payer from it
     set_combo_text(combos, "Dropdown_1", "T", "TS Code", log_fn)
-    tin = clean_tin(data.get("payer_tin"))
-    set_field(edits, "Textbox_7", tin, "Payer TIN", log_fn)
     set_field(edits, "Textbox_9", data.get("payer"), "Payer Name", log_fn)
-    set_field(edits, "Textbox_20", clean_amt(data.get("interest_income")), "Box 1 Interest Income", log_fn)
-    if data.get("box3_us_bond") or data.get("us_bond_interest"):
-        set_field(edits, "Textbox_22", clean_amt(data.get("box3_us_bond") or data.get("us_bond_interest")), "Box 3 US Bond Interest", log_fn)
-    if data.get("fed_tax_withheld") and data.get("fed_tax_withheld") != "0.00":
-        set_field(edits, "Textbox_23", clean_amt(data.get("fed_tax_withheld")), "Box 4 Fed Tax Withheld", log_fn)
+    set_field(edits, "Textbox_20", _money(data.get("interest_income")), "Box 1 Interest Income", log_fn)
+    us = data.get("us_savings_bonds_interest") or data.get("box3_us_bond") or data.get("us_bond_interest")
+    if _nonzero(us):
+        set_field(edits, "Textbox_22", _money(us), "Box 3 U.S. bond / Treasury interest", log_fn)
+    if _nonzero(data.get("fed_tax_withheld")):
+        set_field(edits, "Textbox_23", _money(data.get("fed_tax_withheld")), "Box 4 Fed Tax Withheld", log_fn)
+    if _nonzero(data.get("investment_expenses")):
+        set_field(edits, "Textbox_24", _money(data.get("investment_expenses")), "Box 5 Investment expenses", log_fn)
+    if _nonzero(data.get("tax_exempt_interest")):
+        set_field(edits, "Textbox_27", _money(data.get("tax_exempt_interest")), "Box 8 Tax-exempt interest", log_fn)
+
 
 def populate_div_data(sub_w, data, log_fn):
-    """
-    Populates Form 1099-DIV fields instantly (<30ms).
-    """
     edits, combos, _ = get_screen_controls(sub_w)
-    
+    set_field(edits, "Textbox_6", clean_tin(data.get("payer_tin")), "Payer TIN", log_fn)
     set_combo_text(combos, "Dropdown_1", "T", "TS Code", log_fn)
-    tin = clean_tin(data.get("payer_tin"))
-    set_field(edits, "Textbox_6", tin, "Payer TIN", log_fn)
     set_field(edits, "Textbox_8", data.get("broker") or data.get("payer"), "Payer Name", log_fn)
-    set_field(edits, "Textbox_18", clean_amt(data.get("ordinary_dividends")), "Box 1a Ordinary Dividends", log_fn)
-    set_field(edits, "Textbox_19", clean_amt(data.get("qualified_dividends")), "Box 1b Qualified Dividends", log_fn)
-    if data.get("capital_gain_dist") and data.get("capital_gain_dist") != "0.00":
-        set_field(edits, "Textbox_20", clean_amt(data.get("capital_gain_dist")), "Box 2a Capital Gain", log_fn)
-    if data.get("fed_tax_withheld") and data.get("fed_tax_withheld") != "0.00":
-        set_field(edits, "Textbox_28", clean_amt(data.get("fed_tax_withheld")), "Box 4 Fed Tax Withheld", log_fn)
+    set_field(edits, "Textbox_18", _money(data.get("ordinary_dividends")), "Box 1a Ordinary Dividends", log_fn)
+    set_field(edits, "Textbox_19", _money(data.get("qualified_dividends")), "Box 1b Qualified Dividends", log_fn)
+    for aid, key, name in (("Textbox_20", "capital_gain_dist", "Box 2a Capital Gain Distr."), ("Textbox_28", "fed_tax_withheld", "Box 4 Fed Tax Withheld"),
+                           ("Textbox_29", "section_199a_dividends", "Box 5 Section 199A dividends"), ("Textbox_31", "foreign_tax_paid", "Box 7 Foreign tax paid")):
+        if _nonzero(data.get(key)):
+            set_field(edits, aid, _money(data.get(key)), name, log_fn)
+
 
 def populate_99m_data(sub_w, data, log_fn):
-    """
-    Populates Form 1099-MISC (Screen 99M) (<30ms).
-    """
+    """Screen 99M: TIN = Textbox_6, name = Textbox_7, box 2 royalties = Textbox_27, box 3 other income = Textbox_28,
+    box 4 = Textbox_31. (The old ids 5/6/12/13 were a check box, the TIN box, the payer ZIP and a foreign field.)"""
     if data.get("is_zero_value"):
         log_fn("[INFO] Zero-value 1099-MISC (all fields 0.00) — no Drake entry required.")
         return
     edits, combos, _ = get_screen_controls(sub_w)
+    set_field(edits, "Textbox_6", clean_tin(data.get("payer_tin")), "Payer TIN", log_fn)
     set_combo_text(combos, "Dropdown_1", "T", "TS Code", log_fn)
-    tin = clean_tin(data.get("payer_tin"))
-    set_field(edits, "Textbox_5", tin, "Payer TIN", log_fn)
-    set_field(edits, "Textbox_6", data.get("payer"), "Payer Name", log_fn)
-    if data.get("royalties") and data.get("royalties") != "0.00":
-        set_field(edits, "Textbox_12", clean_amt(data.get("royalties")), "Box 2 Royalties", log_fn)
-    if data.get("other_income") and data.get("other_income") != "0.00":
-        set_field(edits, "Textbox_13", clean_amt(data.get("other_income")), "Box 3 Other Income", log_fn)
+    set_field(edits, "Textbox_7", data.get("payer"), "Payer Name", log_fn)
+    for aid, keys, name in (("Textbox_27", ("royalties", "box2_royalties"), "Box 2 Royalties"),
+                            ("Textbox_28", ("other_income", "box3_other_income"), "Box 3 Other Income"),
+                            ("Textbox_31", ("box4_fed_tax_withheld",), "Box 4 Fed Tax Withheld")):
+        v = next((data.get(k) for k in keys if data.get(k)), "")
+        if _nonzero(v):
+            set_field(edits, aid, _money(v), name, log_fn)
+
 
 def populate_oid_data(sub_w, data, log_fn):
-    """
-    Populates Form 1099-OID (Screen OID) (<30ms).
-    """
     if data.get("is_zero_value"):
         log_fn("[INFO] Zero-value 1099-OID (all fields 0.00) — no Drake entry required.")
         return
     edits, combos, _ = get_screen_controls(sub_w)
+    set_field(edits, "Textbox_5", clean_tin(data.get("payer_tin")), "Payer TIN", log_fn)
     set_combo_text(combos, "Dropdown_1", "T", "TS Code", log_fn)
-    tin = clean_tin(data.get("payer_tin"))
-    set_field(edits, "Textbox_5", tin, "Payer TIN", log_fn)
     set_field(edits, "Textbox_6", data.get("payer"), "Payer Name", log_fn)
+    for aid, key, name in (("Textbox_16", "original_issue_discount", "Box 1 OID"), ("Textbox_19", "fed_tax_withheld", "Box 4 Fed Tax Withheld"),
+                           ("Textbox_23", "oid_treasury_obligations", "Box 8 OID on Treasury obligations")):
+        if _nonzero(data.get(key)):
+            set_field(edits, aid, _money(data.get(key)), name, log_fn)
+
 
 def populate_1099r_data(sub_w, data, log_fn):
-    """
-    Populates Form 1099-R fields instantly (<30ms).
-    """
+    """Screen 1099: distribution code is the Dropdown_33 drop-down (the old code typed it into Textbox_36 = box 8 'Other')."""
     edits, combos, checkboxes = get_screen_controls(sub_w)
-    
+    set_field(edits, "Textbox_5", clean_tin(data.get("payer_tin")), "Payer TIN", log_fn)
     set_combo_text(combos, "Dropdown_1", "T", "TS Code", log_fn)
-    tin = clean_tin(data.get("payer_tin"))
-    set_field(edits, "Textbox_5", tin, "Payer TIN", log_fn)
     set_field(edits, "Textbox_6", data.get("payer"), "Payer Name", log_fn)
-    set_field(edits, "Textbox_25", clean_amt(data.get("gross_distribution")), "Box 1 Gross Distribution", log_fn)
-    set_field(edits, "Textbox_26", clean_amt(data.get("taxable_amount")), "Box 2a Taxable Amount", log_fn)
-    if data.get("fed_tax_withheld") and data.get("fed_tax_withheld") != "0.00":
-        set_field(edits, "Textbox_30", clean_amt(data.get("fed_tax_withheld")), "Box 4 Fed Tax Withheld", log_fn)
-    set_field(edits, "Textbox_36", str(data.get("dist_code", "7")).strip(), "Box 7 Distribution Code", log_fn)
+    set_field(edits, "Textbox_25", _money(data.get("gross_distribution")), "Box 1 Gross Distribution", log_fn)
+    set_field(edits, "Textbox_26", _money(data.get("taxable_amount")), "Box 2a Taxable Amount", log_fn)
+    if _nonzero(data.get("fed_tax_withheld")):
+        set_field(edits, "Textbox_30", _money(data.get("fed_tax_withheld")), "Box 4 Fed Tax Withheld", log_fn)
+    code = str(data.get("dist_code") or "").strip()
+    if code:
+        set_combo_text(combos, "Dropdown_33", code[:1], "Box 7 Distribution Code", log_fn)
+        if len(code) > 1:
+            set_combo_text(combos, "Dropdown_34", code[1:2], "Box 7 Second Distribution Code", log_fn)
+    if data.get("is_ira"):          # only ever tick: the old extractor cannot reliably tell 'not ticked'
+        set_checkbox(checkboxes, "CheckboxTextRight_35", True, "Box 7 IRA/SEP/SIMPLE", log_fn)
 
-    # Box 7 IRA/SEP/SIMPLE Checkbox
-    if data.get("is_ira"):
-        checked = False
-        for cbid in ["CheckBox_1", "CheckboxTextRight_1", "ira"]:
-            cb = checkboxes.get(cbid)
-            if cb:
-                try:
-                    cb.toggle()
-                    log_fn("[OK] Box 7 IRA/SEP/SIMPLE checked!")
-                    checked = True
-                    break
-                except Exception:
-                    try:
-                        cb.iface_toggle.Toggle()
-                        log_fn("[OK] Box 7 IRA/SEP/SIMPLE checked!")
-                        checked = True
-                        break
-                    except Exception:
-                        pass
-        if not checked:
-            for cid, cb in checkboxes.items():
-                if "ira" in cid.lower() or "ira" in (cb.window_text() or "").lower():
-                    try:
-                        cb.toggle()
-                        log_fn("[OK] Box 7 IRA/SEP/SIMPLE checked!")
-                        break
-                    except Exception:
-                        pass
 
 def populate_1098_data(sub_w, data, log_fn):
-    """
-    Populates Schedule A / Form 1098 Mortgage Interest (<15ms).
-    """
+    """Schedule A line 8a 'Home mortgage interest and points reported on Form 1098' = TextboxAdjust_22
+    (the old Textbox_47 is a state-only job-expense field)."""
     edits, _, _ = get_screen_controls(sub_w)
-    set_field(edits, "Textbox_47", data.get("mortgage_interest"), "Box 1 Mortgage Interest (Form 1098)", log_fn)
+    set_field(edits, "TextboxAdjust_22", _money(data.get("mortgage_interest")), "Line 8a Mortgage interest (Form 1098)", log_fn)
+
 
 def populate_5498_data(sub_w, data, log_fn):
-    """
-    Populates or logs Form 5498 IRA Contribution / Roth Conversion data in Drake (<15ms).
-    """
-    edits, _, _ = get_screen_controls(sub_w)
-    if data.get("roth_conversion_amount") and data.get("roth_conversion_amount") != "0.00":
-        set_field(edits, "Textbox_1", data.get("roth_conversion_amount"), "Roth IRA Conversion Amount", log_fn)
-    log_fn(f"[5498] Verified {data.get('account_type', 'IRA')} for {data.get('trustee', 'Trustee')}: FMV ${data.get('fmv_of_account', '0.00')}")
+    """Form 5498 is informational: nothing is typed (the old code wrote into an unverified Textbox_1)."""
+    log_fn(f"[5498] {data.get('account_type', 'IRA')} at {data.get('trustee', 'trustee')}: FMV {data.get('fmv_of_account', '0.00')}, "
+           f"Roth conversion {data.get('roth_conversion_amount', '0.00')} — informational, review Form 8606 in Drake. Nothing typed.")
+
 
 def populate_1099b_data(sub_w, data, log_fn):
-    """
-    Populates or logs Form 1099-B Capital Gains summary data in Drake (<15ms).
-    """
-    edits, _, _ = get_screen_controls(sub_w)
-    if data.get("total_proceeds") and data.get("total_proceeds") != "0.00":
-        set_field(edits, "Textbox_1", data.get("total_proceeds"), "Total Proceeds (Screen D)", log_fn)
-        set_field(edits, "Textbox_2", data.get("total_cost_basis"), "Total Cost Basis (Screen D)", log_fn)
-    log_fn(f"[1099-B] Summary for {data.get('broker', 'Broker')}: Short-Term Net ${data.get('short_term_net_gain', '0.00')}, Long-Term Net ${data.get('long_term_net_gain', '0.00')}, Total Net ${data.get('total_net_gain', '0.00')}")
+    """1099-B totals are NOT typed (the old code wrote them into Textbox_1/2 of screen 'D', which is the 99G
+    screen). Sale lots go into Drake through the Form 8949 import file (Review page -> Transfer)."""
+    log_fn(f"[1099-B] {data.get('broker', 'Broker')}: proceeds {data.get('total_proceeds', '')}, basis {data.get('total_cost_basis', '')} — "
+           "enter through the Form 8949 import file. Nothing typed.")
+
+
+FILLERS = {"W2": populate_w2_data, "SSA": populate_ssa_data, "1099": populate_1099r_data, "INT": populate_int_data,
+           "DIV": populate_div_data, "A": populate_1098_data, "99M": populate_99m_data, "OID": populate_oid_data,
+           "ROTH": populate_5498_data, "8606": populate_5498_data, "D": populate_1099b_data, "8949": populate_1099b_data}
+NO_SCREEN = {"ROTH", "8606", "D", "8949"}         # informational / import-file only: never opened or typed into
+
+
+def _open(sc, record, log):
+    """Open record N of a Drake screen through the verified forms-list / grid handling (taxflow.transfer)."""
+    from pywinauto import Desktop as _D
+    from taxflow import transfer as T
+    import sys as _sys
+    return T.open_record(sc, record, log, _sys.modules[__name__], _D, create=True)
+
 
 def populate_all_packet_modules(modules, log_fn=print):
-    """
-    Batch populates all modules into Drake Tax 2025.
-    Groups modules by screen type, navigates to each screen, inserts all records,
-    and returns to the menu, leaving Drake ready for reviewer verification.
-    """
+    """Enter every module on its Drake screen: one record at a time (open record N -> fill -> Exit saves it)."""
     logs = []
     def log(msg):
         logs.append(msg)
         log_fn(msg)
 
     log("[PRE-CONDITION] Verifying connection to Drake Tax 2025...")
+    if find_subscreen_window():
+        exit_current_subscreen(log)
     menu_info = find_menu_window()
-    if not menu_info:
-        # Check subscreen
-        sub_info = find_subscreen_window()
-        if sub_info:
-            exit_current_subscreen(log)
-            menu_info = find_menu_window()
-
     if not menu_info:
         log("[ERROR] Could not find Drake Data Entry Menu. Ensure client return is open.")
         return False, logs, "ERROR"
-
     log(f"[PRE-CONDITION] Connected to Menu: '{menu_info[1]}'")
-    log(f"[START] Beginning batch population of {len(modules)} extracted tax forms into Drake...")
 
-    # Group by screen
     from collections import defaultdict
     by_screen = defaultdict(list)
     for m in modules:
-        by_screen[m["screen"]].append(m)
-
-    screen_order = ["W2", "SSA", "1099", "INT", "DIV", "A", "D", "ROTH"]
-
-    for sc in screen_order:
-        items = by_screen.get(sc, [])
+        by_screen[str(m["screen"]).upper()].append(m)
+    ok_all = True
+    for sc in ["W2", "SSA", "1099", "INT", "DIV", "99M", "OID", "A", "ROTH", "8606", "D", "8949"]:
+        items = [m for m in by_screen.get(sc, []) if not m.get("is_zero_value")]
+        for m in by_screen.get(sc, []):
+            if m.get("is_zero_value"):
+                log(f"[{sc}] {m.get('title', sc)}: all amounts zero — nothing entered.")
         if not items:
             continue
-
-        log(f"\n[SCREEN {sc}] Opening screen for {len(items)} record(s)...")
-        sub_w = open_drake_screen(sc, log)
-        if not sub_w:
-            log(f"[ERROR] Failed to open Screen {sc}. Skipping.")
+        if sc in NO_SCREEN:
+            for item in items:
+                FILLERS[sc](None, item, log)
             continue
+        for rec, item in enumerate(items, 1):
+            log(f"\n[{sc} REC {rec}/{len(items)}] {item.get('title', sc)}")
+            try:
+                sub_w = _open(sc, rec, log)
+            except Exception as ex:
+                ok_all = False
+                log(f"[ERROR] Screen {sc} record {rec} did not open: {ex}")
+                continue
+            time.sleep(0.4)
+            FILLERS[sc](sub_w, item, log)
+            exit_current_subscreen(log)
+            time.sleep(0.4)
+    log("\n[DONE] Entered every module that has verified Drake fields. Review the return in Drake.")
+    return ok_all, logs, "AWAITING_VERIFICATION"
 
-        time.sleep(0.5)
-
-        for idx, item in enumerate(items):
-            rec_num = idx + 1
-            log(f"[{sc} REC {rec_num}/{len(items)}] Populating: {item.get('title', sc)}...")
-
-            if sc == "W2":
-                populate_w2_data(sub_w, item, log)
-            elif sc == "SSA":
-                populate_ssa_data(sub_w, item, log)
-            elif sc == "1099":
-                populate_1099r_data(sub_w, item, log)
-            elif sc == "INT":
-                populate_int_data(sub_w, item, log)
-            elif sc == "DIV":
-                populate_div_data(sub_w, item, log)
-            elif sc == "A":
-                populate_1098_data(sub_w, item, log)
-            elif sc == "D":
-                populate_1099b_data(sub_w, item, log)
-            elif sc == "ROTH":
-                populate_5498_data(sub_w, item, log)
-
-            # If there's another record on this multi-instance screen, advance!
-            if rec_num < len(items) and sc in ["W2", "1099", "INT", "DIV"]:
-                log(f"[{sc}] Advancing to record {rec_num + 1}...")
-                advance_to_next_record(sub_w, log)
-                time.sleep(0.4)
-
-        log(f"[SAVE] Exiting Screen {sc} to Menu...")
-        exit_current_subscreen(log)
-        time.sleep(0.5)
-
-    log("\n[SUCCESS] All tax modules successfully populated into Drake Tax 2025!")
-    log("[READY_TO_VERIFY] Drake return updated and awaiting reviewer verification.")
-    return True, logs, "AWAITING_VERIFICATION"
 
 def populate_single_packet_module(item, log_fn=print):
-    """
-    Populates a SINGLE chosen module (e.g. SSA-1099, W-2, 1099-INT, 1099-R, etc.)
-    directly into its corresponding Drake Tax screen and leaves the screen open
-    so the reviewer can verify side-by-side on desktop before clicking Save & Verify.
-    """
+    """Enter ONE module on its Drake screen/record and leave the screen open for the reviewer."""
     logs = []
     def log(msg):
         logs.append(msg)
         log_fn(msg)
 
-    sc = item.get("screen", "W2").upper()
-    title = item.get("title", f"Screen {sc}")
-    pnum = item.get("page", 1)
-    mtype = item.get("type", sc)
-
-    log(f"[PRE-CONDITION] Preparing single entry for {mtype} (Page {pnum}) into Drake Screen {sc}...")
-    sub_info = find_subscreen_window()
-    if sub_info:
-        log("[NAVIGATE] Exiting previous subscreen to Menu first...")
+    sc = str(item.get("screen", "W2")).upper()
+    title, pnum, mtype = item.get("title", f"Screen {sc}"), item.get("page", 1), item.get("type", sc)
+    if sc not in FILLERS:
+        log(f"[ERROR] No verified Drake fields for screen {sc} — enter {mtype} manually.")
+        return False, logs, "ERROR"
+    if sc in NO_SCREEN or item.get("is_zero_value"):
+        FILLERS[sc](None, item, log) if sc in NO_SCREEN else log("[INFO] All amounts are zero — nothing to enter.")
+        return True, logs, "NOTHING_TO_ENTER"
+    if find_subscreen_window():
         exit_current_subscreen(log)
         time.sleep(0.5)
-
-    menu_info = find_menu_window()
-
-    if not menu_info:
+    if not find_menu_window():
         log("[ERROR] Could not find Drake Data Entry Menu. Ensure client return is open.")
         return False, logs, "ERROR"
-
-    log(f"[SCREEN {sc}] Navigating to Screen {sc} in Drake Tax 2025...")
-    sub_w = open_drake_screen(sc, log)
-    if not sub_w:
-        log(f"[ERROR] Failed to open Screen {sc} in Drake.")
+    record = int(item.get("instance_index") or 1)          # no more hard-coded page -> record tables
+    log(f"[SCREEN {sc}] Opening record {record} for {mtype} (page {pnum})...")
+    try:
+        sub_w = _open(sc, record, log)
+    except Exception as ex:
+        log(f"[ERROR] {ex}")
         return False, logs, "ERROR"
-
-    time.sleep(0.3)
-
-    # Multi-instance navigation: if this module is instance 2, 3, etc., advance to that record!
-    target_instance = int(item.get("instance_index") or 1)
-    if not item.get("instance_index"):
-        pnum = int(item.get("page", 1))
-        if sc == "1099":
-            if pnum == 3: target_instance = 1
-            elif pnum == 4: target_instance = 2
-            elif pnum == 5: target_instance = 3
-        elif sc == "INT":
-            if pnum == 6: target_instance = 1
-            elif pnum == 7: target_instance = 2
-            elif pnum == 8: target_instance = 3
-            elif pnum == 12: target_instance = 4
-            elif pnum == 45: target_instance = 5
-        elif sc == "DIV":
-            if pnum == 12: target_instance = 1
-            elif pnum == 45: target_instance = 2
-
-    if target_instance > 1 and sc in ["1099", "INT", "DIV", "W2", "99M", "OID"]:
-        log(f"[{sc}] Target instance is Record {target_instance}. Advancing from Record 1...")
-        for step in range(1, target_instance):
-            log(f"[{sc}] Advancing to Record {step + 1}...")
-            advance_to_next_record(sub_w, log)
-            time.sleep(0.3)
-
-    log(f"[{sc} REC {target_instance}] Populating fields for {title}...")
-
-    if sc == "W2":
-        populate_w2_data(sub_w, item, log)
-    elif sc == "SSA":
-        populate_ssa_data(sub_w, item, log)
-    elif sc == "1099":
-        populate_1099r_data(sub_w, item, log)
-    elif sc == "INT":
-        populate_int_data(sub_w, item, log)
-    elif sc == "DIV":
-        populate_div_data(sub_w, item, log)
-    elif sc == "A":
-        populate_1098_data(sub_w, item, log)
-    elif sc == "D":
-        populate_1099b_data(sub_w, item, log)
-    elif sc == "ROTH":
-        populate_5498_data(sub_w, item, log)
-    elif sc == "99M":
-        populate_99m_data(sub_w, item, log)
-    elif sc == "OID":
-        populate_oid_data(sub_w, item, log)
-
-    log(f"[SUCCESS] {mtype} (Page {pnum}) successfully populated into Drake Screen {sc}!")
-    log(f"[READY_TO_VERIFY] Review Screen {sc} on desktop, then click 'Verify & Save' to exit.")
+    time.sleep(0.4)
+    FILLERS[sc](sub_w, item, log)
+    log(f"[READY_TO_VERIFY] Review Screen {sc} record {record} in Drake, then click 'Verify & Save' to exit.")
     return True, logs, "AWAITING_VERIFICATION"
 
 if __name__ == "__main__":

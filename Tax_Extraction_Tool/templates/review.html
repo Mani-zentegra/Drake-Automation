@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drake Review</title>
+<link rel="stylesheet" href="/static/review/review.css?v=1">
+<script src="/static/vendor/pdfjs/pdf.min.js"></script>
+<script>window.pdfjsLib || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>');</script>
+</head>
+<body class="hl">
+<header class="bar">
+  <a class="brand" href="#/upload"><span class="mark">DR</span>Drake Review</a>
+  <span class="file" id="fileName"></span>
+  <span class="chip" id="tpChip" hidden></span>
+  <div class="sp"></div>
+  <div class="dstat" title="Drake Tax on this computer"><span class="ldot" id="ldot"></span><span class="t" id="ltxt">Checking Drake…</span></div>
+  <a class="btn ghost" href="/w2-mapping" title="The original single-form W-2 mapping page">W-2 page</a>
+</header>
+<nav class="steps" id="steps"></nav>
+<main id="app"></main>
+
+<svg id="arrows"><defs><marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f5bea"/></marker>
+<marker id="ahg" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker></defs><g id="arrowG"></g></svg>
+<div class="mlabel" id="labA"></div><div class="mlabel" id="labB"></div><div class="toast" id="toast"></div>
+<div class="scrim" id="scrim"><div class="modal">
+  <div class="mhead"><h3 id="mTitle"></h3><span class="sub" id="mSub"></span><button class="btn ghost" style="margin-left:auto" id="mClose">✕</button></div>
+  <div class="mbody" id="mBody"></div><div class="mfoot" id="mFoot"></div>
+</div></div>
+
+<script src="/static/review/w2layout.js?v=1"></script>
+<script src="/static/review/review.js?v=1"></script>
+</body>
+</html>

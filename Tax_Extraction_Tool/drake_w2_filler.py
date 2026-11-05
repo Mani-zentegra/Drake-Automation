@@ -1,3 +1,4 @@
+import re
 import sys
 import os
 
@@ -61,6 +62,10 @@ def dismiss_drake_popups(prefer_cancel=True):
                     w = Desktop(backend="uia").window(handle=h)
                     dialog_texts = [x.window_text().lower() for x in w.descendants(control_type="Text") if x.window_text()]
                     full_txt = " ".join(dialog_texts)
+
+                    # NEVER answer Drake's "exit the program?" prompt automatically (Yes would close Drake).
+                    if "close program" in t or "want to exit" in full_txt or "exit drake" in full_txt:
+                        return
 
                     # 1. E-FILE WARNING ALERT: Click CANCEL (auto_id '2' or 'Cancel') to exit!
                     if "fields on this screen" in full_txt or "e-file" in full_txt or "to exit this screen" in full_txt:
@@ -185,39 +190,37 @@ def enter_clean_value(control, value):
         return False
     val_str = str(value).strip()
 
-    # Fast path: instant programmatic value assignment via ValuePattern (under 5ms, no focus redraw lag)
+    # Verified against Drake 2025 (2026-11-05):
+    #  * Drake only keeps a value when the field gets focus and then loses it, so: focus -> set -> Tab.
+    #  * The old click + Ctrl+A + typing fallback typed into WHATEVER field had the cursor when the target
+    #    could not be focused (it put the SSN into Screen 1's last name). It is gone: if the cursor is not in
+    #    this exact field, nothing is typed and False is returned.
     try:
-        control.iface_value.SetValue(val_str)
-        return True
+        if control.iface_value.CurrentIsReadOnly:
+            return False
     except Exception:
         pass
-
-    # Fallback 1: Pywinauto EditWrapper set_edit_text
-    try:
-        control.set_edit_text(val_str)
-        return True
-    except Exception:
-        pass
-
-    # Fallback 2: Focus and set
     try:
         control.set_focus()
-        control.set_edit_text(val_str)
-        return True
-    except Exception:
-        pass
-
-    # Fallback 2: Keystroke typing
-    try:
-        rect = control.rectangle()
-        cx = (rect.left + rect.right) // 2
-        cy = (rect.top + rect.bottom) // 2
-        pyautogui.click(cx, cy)
-        pyautogui.hotkey('ctrl', 'a')
-        pyautogui.write(val_str, interval=0.0)
-        return True
+        time.sleep(0.08)
+        if not control.has_keyboard_focus():
+            return False
     except Exception:
         return False
+    try:
+        control.iface_value.SetValue(val_str)
+    except Exception:
+        try:
+            control.set_edit_text(val_str)
+        except Exception:
+            return False
+    try:
+        from pywinauto import keyboard
+        keyboard.send_keys("{TAB}")          # leave the field so Drake commits the value
+        time.sleep(0.12)
+    except Exception:
+        pass
+    return True
 
 def find_drake_dialog(keyword):
     matched = []
@@ -257,66 +260,24 @@ def click_open_create(window):
     pyautogui.hotkey('ctrl', 'o')
     return True
 
-def open_or_create_client(ssn, first_name="Zara", last_name="Weaver-Cummings", mi="O"):
-    cleaned_ssn = str(ssn).replace("-", "").replace(" ", "").strip()
-    print(f"[PRE-CONDITION] Opening or creating client SSN: {cleaned_ssn} ({first_name} {last_name})")
-
-    open_h, _ = find_drake_dialog("Open / Create a Return")
-    if not open_h:
-        main_h, main_t = find_drake_window()
-        if not main_h or "data entry" in main_t.lower():
-            main_h, main_t = find_drake_dialog("Drake 2025 Tax Software")
-        if not main_h:
-            print("[ERROR] Drake 2025 Tax Software is not running.")
-            return False
-
-        print(f"[CONNECT] Drake Main Window: '{main_t}'")
-        main_win = Desktop(backend="uia").window(handle=main_h)
-        print("[ACTION] Clicking 'Open/Create' button...")
-        click_open_create(main_win)
-
-        for _ in range(12):
-            time.sleep(0.4)
-            open_h, _ = find_drake_dialog("Open / Create a Return")
-            if open_h:
-                break
-
-    if not open_h:
-        print("[ERROR] Could not open 'Open / Create a Return' dialog.")
+def open_or_create_client(ssn, first_name="", last_name="", mi=""):
+    """Open the return for this SSN, or create it (Individual 1040) when Drake says it does not exist.
+    Delegates to taxflow.transfer.open_return, which uses the dialog ids verified on Drake 2025 and never answers a
+    Drake question it does not recognise. (The old version had no 'create' step and defaulted to one client's name.)"""
+    cleaned_ssn = re.sub(r"\D", "", str(ssn or ""))
+    if len(cleaned_ssn) != 9:
+        print("[ERROR] A 9-digit SSN is needed to open or create the return.")
+        return False
+    try:
+        import drake_packet_filler as pf
+        import app_navigator as nav
+        from taxflow import transfer as T
+        T.open_return(cleaned_ssn, first_name or "", mi or "", last_name or "", print, pf, nav, Desktop)
+        return True
+    except Exception as exc:
+        print(f"[ERROR] {exc}")
         return False
 
-    print("[DIALOG] 'Open / Create a Return' is ready.")
-    open_dialog = Desktop(backend="uia").window(handle=open_h)
-
-    print(f"[SEARCH] Submitting SSN: {cleaned_ssn}...")
-    for c in open_dialog.descendants(control_type="Edit"):
-        try:
-            if c.is_visible() and c.is_enabled():
-                c.set_edit_text(cleaned_ssn)
-                time.sleep(0.3)
-                break
-        except Exception:
-            continue
-
-    for c in open_dialog.descendants(control_type="Button"):
-        if c.window_text().strip().lower() in ["ok", "_ok"]:
-            try:
-                c.invoke()
-                break
-            except Exception:
-                pass
-    else:
-        pyautogui.press('enter')
-
-    for _ in range(12):
-        time.sleep(0.5)
-        dismiss_drake_popups()
-        cur_h, cur_t = find_drake_window()
-        if cur_h and "data entry" in cur_t.lower():
-            print(f"[SUCCESS] Client {cleaned_ssn} return opened!")
-            return True
-
-    return False
 
 def ensure_menu_screen(window):
     """
@@ -540,7 +501,7 @@ def populate_w2_screen(w2_data):
     set_aid_val("Textbox_5", w2_data.get("employer_name"), "Employer Name")
     set_aid_val("Textbox_7", w2_data.get("employer_address"), "Employer Street")
     set_aid_val("Textbox_8", w2_data.get("employer_city"), "Employer City")
-    set_dropdown_aid_val("Dropdown_9", w2_data.get("employer_state", "WY"), "Employer State")
+    set_dropdown_aid_val("Dropdown_9", w2_data.get("employer_state", ""), "Employer State")
     set_aid_val("Textbox_10", w2_data.get("employer_zip"), "Employer ZIP")
 
     # Box 1 to 6
@@ -552,29 +513,26 @@ def populate_w2_screen(w2_data):
     set_aid_val("Textbox_28", w2_data.get("box6_medicare_tax"), "Box 6 Medicare Tax")
 
     # Box 12a and 12b (Retirement, Health, etc.)
-    b12a_code = w2_data.get("box12a_code", "D")
-    b12a_amt = w2_data.get("box12a_amount", "11750.00")
-    b12b_code = w2_data.get("box12b_code", "DD")
-    b12b_amt = w2_data.get("box12b_amount", "12500.00")
-
-    set_dropdown_aid_val("Dropdown_34", b12a_code, "Box 12a Code")
-    set_aid_val("Textbox_35", b12a_amt, f"Box 12a ({b12a_code}) Amount")
-    set_dropdown_aid_val("Dropdown_37", b12b_code, "Box 12b Code")
-    set_aid_val("Textbox_38", b12b_amt, f"Box 12b ({b12b_code}) Amount")
+    # Only what the W-2 actually shows (the old code defaulted to one client's "D 11750.00" / "DD 12500.00").
+    for slot, code_aid, amt_aid in (("a", "Dropdown_34", "Textbox_35"), ("b", "Dropdown_37", "Textbox_38")):
+        code, amt = w2_data.get(f"box12{slot}_code"), w2_data.get(f"box12{slot}_amount")
+        if code and amt and str(amt).replace(",", "").strip() not in ("0", "0.00"):
+            set_dropdown_aid_val(code_aid, code, f"Box 12{slot} Code")
+            set_aid_val(amt_aid, amt, f"Box 12{slot} ({code}) Amount")
 
     # Box 13 Checkbox: Retirement Plan
     if w2_data.get("box13_retirement_plan"):
         cb = checkboxes_by_aid.get("CheckboxTextRight_47")
         if cb:
             try:
-                cb.set_focus()
-                cb.toggle()
+                if not cb.get_toggle_state():          # only tick it if it is not ticked already
+                    cb.toggle()
                 log("[OK] Box 13: Retirement Plan Checked")
             except Exception as e:
                 log(f"[WARN] Box 13 toggle: {e}")
 
     # State Information (Boxes 15-20)
-    st_code = w2_data.get("box15_state", "WY")
+    st_code = w2_data.get("box15_state", "")
     st_wages = w2_data.get("box16_state_wages", "")
     st_tax = w2_data.get("box17_state_tax", "")
     if st_code:
