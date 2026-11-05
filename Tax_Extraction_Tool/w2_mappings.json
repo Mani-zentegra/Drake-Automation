@@ -1,0 +1,71 @@
+{
+  "CheckboxTextRight_47": {
+    "pdf": "box13_retirement_plan"
+  },
+  "Dropdown_1": {
+    "const": "T"
+  },
+  "Dropdown_34": {
+    "pdf": "box12a_code"
+  },
+  "Dropdown_37": {
+    "pdf": "box12b_code"
+  },
+  "Dropdown_9": {
+    "pdf": "employer_state"
+  },
+  "Textbox_10": {
+    "pdf": "employer_zip"
+  },
+  "Textbox_23": {
+    "pdf": "box1_wages"
+  },
+  "Textbox_24": {
+    "pdf": "box2_fed_withheld"
+  },
+  "Textbox_25": {
+    "pdf": "box3_ss_wages"
+  },
+  "Textbox_26": {
+    "pdf": "box4_ss_tax"
+  },
+  "Textbox_27": {
+    "pdf": "box5_medicare_wages"
+  },
+  "Textbox_28": {
+    "pdf": "box6_medicare_tax"
+  },
+  "Textbox_35": {
+    "pdf": "box12a_amount"
+  },
+  "Textbox_38": {
+    "pdf": "box12b_amount"
+  },
+  "Textbox_4": {
+    "pdf": "employer_ein"
+  },
+  "Textbox_5": {
+    "pdf": "employer_name"
+  },
+  "Textbox_59": {
+    "pdf": "box1_wages"
+  },
+  "Textbox_60": {
+    "pdf": "box6_medicare_tax"
+  },
+  "Textbox_7": {
+    "pdf": "employer_street"
+  },
+  "Textbox_8": {
+    "pdf": "employer_city"
+  },
+  "__client_name": {
+    "pdf": "employee_name"
+  },
+  "__client_ssn": {
+    "pdf": "employee_ssn"
+  },
+  "Dropdown_57": {
+    "pdf": "employee_zip"
+  }
+}

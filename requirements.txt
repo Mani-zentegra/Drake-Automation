@@ -4,3 +4,10 @@ PyAutoGUI==0.9.54
 pywin32==311
 openpyxl==3.1.5
 comtypes==1.4.16
+# Web app + PDF extraction (used by Tax_Extraction_Tool/app.py and the /w2-mapping page)
+Flask>=2.3
+requests>=2.31
+pypdf>=4.0
+Pillow>=10.0
+python-dotenv>=1.0
+pandas>=2.0

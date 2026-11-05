@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drake Data Entry — Tax Packet</title>
+<script src="/static/vendor/pdfjs/pdf.min.js"></script>
+<script>window.pdfjsLib || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>');</script>
+<style>
+:root{
+  --bg:#e9edf3; --line:#dde3ec; --line2:#c9d1dd; --ink:#111827; --ink2:#4b5563; --ink3:#8a93a3;
+  --accent:#2f5bea; --accent-soft:#e8eefe; --ok:#16a34a; --ok-soft:#e7f7ec; --warn:#d97706; --warn-soft:#fff4e0; --bad:#dc2626; --bad-soft:#fdecec;
+  --mono:Consolas,"Courier New",ui-monospace,monospace;
+  /* Drake look */
+  --d-bg:#f0f0f0; --d-line:#c9cbd0; --d-title:#2b4f81; --d-tab:#e4e7ec; --d-btn:#fbfbfb;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:13px;display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;cursor:pointer}
+[hidden]{display:none!important}
+.btn{border:1px solid var(--line2);background:#fff;color:var(--ink);border-radius:6px;padding:4px 10px;font-weight:600;display:inline-flex;gap:6px;align-items:center;white-space:nowrap;font-size:12.5px;text-decoration:none}
+.btn:hover{background:#f6f8fb}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.primary:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--ink2)}
+.btn.icon{padding:3px 8px}.btn.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.bar{flex:0 0 auto;height:42px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#fff;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;white-space:nowrap}
+.brand .mark{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#2f5bea,#5b8cff);color:#fff;display:grid;place-items:center;font-size:9px;font-weight:800}
+.file{color:var(--ink2);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp{flex:1}
+.dstat{display:flex;align-items:center;gap:7px;min-width:0;max-width:360px}
+.ldot{width:9px;height:9px;border-radius:50%;background:#b8c0cc;flex:0 0 auto}.ldot.on{background:var(--ok)}.ldot.warn{background:var(--warn)}
+.dstat .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+main{flex:1 1 auto;display:flex;min-height:0;padding:8px}
+.pane{position:relative;background:#fff;border:1px solid var(--line);border-radius:9px;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:clip}
+#pdfPane{flex:0 0 var(--split,40%)}
+#rightPane{flex:1 1 auto}
+#split{flex:0 0 10px;cursor:col-resize;display:flex;align-items:center;justify-content:center}
+#split::after{content:"";width:4px;height:44px;border-radius:3px;background:#c3cad6}
+#split:hover::after,#split.drag::after{background:var(--accent)}
+.phead{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.phead .lbl{color:var(--ink3);font-size:12px;white-space:nowrap}
+.pchips{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.pchip{border:1px solid var(--line2);background:#fff;border-radius:999px;padding:1px 8px;font-size:11.5px;font-weight:600;color:var(--ink2);cursor:pointer}
+.pchip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#pdfScroll{flex:1;overflow:auto;background:#dfe4eb;padding:10px}
+#pdfStage{position:relative;margin:0 auto;background:#fff;box-shadow:0 2px 12px rgba(16,24,40,.14)}
+#pdfCanvas{display:block}
+#pdfOverlay{position:absolute;inset:0}
+.fx{position:absolute;border-radius:3px;border:1.5px solid rgba(22,163,74,.7);background:rgba(22,163,74,.07);cursor:pointer}
+.fx.conf{border-color:#15803d;background:rgba(22,163,74,.18)}
+.fx.edited{border-color:#2f5bea;background:rgba(47,91,234,.08)}
+.fx.err{border-color:#dc2626;background:rgba(220,38,38,.08)}
+.fx.hot{border:2.5px solid var(--accent)!important;background:rgba(47,91,234,.18)!important;box-shadow:0 0 0 4px rgba(47,91,234,.22);z-index:3}
+.fx.lot{border-color:rgba(47,91,234,.5);background:rgba(47,91,234,.05)}
+
+/* ================= Drake Data Entry window ================= */
+#dkScroll{flex:1;overflow:auto;background:#d9dde3;padding:10px}
+.dwin{background:var(--d-bg);border:1px solid #9aa3b2;box-shadow:0 2px 10px rgba(0,0,0,.15);font-family:"Segoe UI",Tahoma,Arial,sans-serif;font-size:11px;color:#000;min-width:640px}
+.dwin .title{background:linear-gradient(#fff,#f2f2f2);border-bottom:1px solid #c6c9ce;padding:4px 8px;font-size:12px;color:#333;display:flex;gap:10px;align-items:center}
+.dwin .title b{color:#000}
+.dwin .toolbar{display:flex;gap:2px;padding:4px 6px;border-bottom:1px solid #d3d5d9;background:#f7f7f7;flex-wrap:wrap}
+.tb{display:flex;flex-direction:column;align-items:center;gap:1px;padding:3px 9px;border:1px solid transparent;border-radius:3px;background:transparent;font-size:11px;color:#222;cursor:pointer;min-width:58px}
+.tb:hover{background:#e5f1fb;border-color:#a6cdf0}
+.tb .ic{font-size:16px;line-height:18px}
+.tb:disabled{color:#a0a0a0;cursor:default;background:transparent;border-color:transparent}
+.mtabs{display:flex;gap:0;padding:6px 8px 0;border-bottom:1px solid #9aa3b2;flex-wrap:wrap}
+.mtab{border:1px solid #9aa3b2;border-bottom:0;background:var(--d-tab);padding:4px 14px 3px;margin-right:-1px;font-size:11.5px;cursor:pointer;position:relative;top:1px;color:#222}
+.mtab.on{background:var(--d-bg);font-weight:700;padding-bottom:4px}
+.mtab .n{font-weight:400;color:#555;margin-left:4px}
+.mtab.absent{color:#9aa0a8;cursor:default;background:#eceef1}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 14px;padding:14px 14px 18px}
+.sbtn{display:flex;align-items:center;gap:8px;border:1px solid #b9bec7;background:linear-gradient(#fff,#eef0f3);border-radius:2px;padding:4px 6px;cursor:pointer;text-align:left;min-height:30px}
+.sbtn:hover{border-color:#3c7fb1;background:linear-gradient(#f4f9ff,#dcecfb)}
+.sbtn .code{font-weight:700;min-width:36px;color:#0b3d91}
+.sbtn .nm{flex:1;font-size:11px;line-height:13px}
+.sbtn .cnt{font-size:10.5px;color:#555;white-space:nowrap}
+.sbtn .st{font-size:10px;font-weight:700;border-radius:8px;padding:0 6px;white-space:nowrap}
+.st.done{background:#dff3e6;color:#166534}.st.part{background:#fff1d6;color:#92400e}.st.none{background:#eceef1;color:#555}.st.zero{background:#eceef1;color:#777}
+.legendrow{padding:0 14px 12px;color:#555;font-size:11px}
+
+/* screen */
+.scrhead{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid #c6c9ce;background:#fff}
+.scrhead .code{background:#0b3d91;color:#fff;font-weight:700;padding:1px 7px;border-radius:2px}
+.scrhead h3{margin:0;font-size:13px}
+.recnav{margin-left:auto;display:flex;align-items:center;gap:4px;font-size:11.5px}
+.recnav button{border:1px solid #b9bec7;background:#fff;border-radius:2px;padding:1px 7px}
+.reclist{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid #d3d5d9;flex-wrap:wrap;background:#fafafa}
+.rec{border:1px solid #c3c7ce;background:#fff;border-radius:2px;padding:2px 8px;font-size:11px;cursor:pointer;white-space:nowrap}
+.rec.on{border-color:#0b3d91;background:#e6eefb;font-weight:700}
+.rec .st{margin-left:5px}
+.banner{margin:8px 10px 0;padding:6px 10px;border-radius:3px;font-size:11.5px;line-height:1.45}
+.banner.warn{background:#fff4e0;border:1px solid #f0c27a;color:#7a4b00}
+.banner.info{background:#eef4fd;border:1px solid #bcd2f2;color:#1e3a6e}
+.banner.ok{background:#e9f7ee;border:1px solid #b8e0c5;color:#166534}
+.fbody{display:grid;grid-template-columns:minmax(260px,1fr) minmax(300px,1.15fr);gap:12px;padding:12px 12px 6px}
+.grp{position:relative;border:1px solid #d5d5d5;border-radius:3px;padding:14px 10px 8px;box-shadow:inset 1px 1px 0 #fff}
+.grp > .lg{position:absolute;top:-8px;left:8px;background:var(--d-bg);padding:0 4px;font-size:11px}
+.fr{display:flex;align-items:center;gap:6px;margin:3px 0;min-height:22px}
+.fr .bx{flex:0 0 26px;text-align:right;font-weight:700}
+.fr .lb{flex:0 0 190px;white-space:nowrap;overflow:hidden;position:relative}
+.fr .lb::after{content:" ................................................................";color:#666;letter-spacing:.3px}
+.fr .in{position:relative;flex:1 1 auto;display:flex;min-width:0}
+.fr .in input,.fr .in select{width:100%;height:19px;border:1px solid #c3c5ca;box-shadow:inset 1px 1px 0 #e6e6e8;font-family:"Courier New",Consolas,monospace;font-size:12.5px;padding:0 24px 0 4px;background:#fff;outline:none;text-transform:uppercase;border-radius:0}
+.fr .in input.amt{text-align:right}
+.fr .in input:focus{border-color:#3c7fb1;box-shadow:inset 0 0 0 1px #3c7fb1}
+.fr .in.w-s{flex:0 0 120px}.fr .in.w-amt{flex:0 0 150px}
+.fr .in.s-ok input{border-color:#34a853}
+.fr .in.s-edited input{border-color:#2f5bea;background:#f5f8ff}
+.fr .in.s-err input{border-color:#dc2626;background:#fff1f1}
+.fr .in.s-conf input{border-color:#15803d;background:#f0fbf3}
+.fr .in.s-sent input{border-color:#15803d;background:#e2f6e8}
+.fr .in.hot input{border-color:#2f5bea!important;background:#fff7b0!important;box-shadow:inset 0 0 0 2px #2f5bea}
+.cfm{position:absolute;right:3px;top:3px;width:13px;height:13px;border-radius:50%;border:1.5px solid #d08a00;background:#fff;cursor:pointer;font:700 9px/10px Arial,sans-serif;color:#fff;text-align:center}
+.cfm.on{background:#15803d;border-color:#15803d}.cfm.on::after{content:"✓"}
+.cfm.hide{display:none}
+.chkf{display:flex;align-items:center;gap:6px}
+.chkf input{width:13px;height:13px;margin:0}
+.ferr{color:#b91c1c;font-size:10.5px;margin-left:4px;white-space:nowrap}
+.actions{display:flex;gap:8px;align-items:center;padding:10px 12px 14px;flex-wrap:wrap;border-top:1px solid #d3d5d9;margin-top:6px}
+.actions .msg{color:#444;font-size:11.5px}
+/* lots */
+.lots{margin:6px 12px 10px;border:1px solid #c9cbd0;background:#fff}
+.lots .lh{display:flex;gap:8px;align-items:center;padding:5px 8px;border-bottom:1px solid #d3d5d9;background:#f7f7f7;flex-wrap:wrap}
+.lots table{width:100%;border-collapse:collapse;font-size:11px}
+.lots th{background:#eceef1;border-bottom:1px solid #c9cbd0;padding:3px 4px;text-align:left;font-weight:600;position:sticky;top:0}
+.lots td{border-bottom:1px solid #eceef1;padding:1px 3px;white-space:nowrap}
+.lots td input{width:100%;border:1px solid transparent;font-family:"Courier New",monospace;font-size:11.5px;padding:0 3px;height:18px;background:transparent}
+.lots td input:hover{border-color:#c3c5ca}
+.lots td input:focus{border-color:#3c7fb1;background:#fff;outline:none}
+.lots td.n{text-align:right}.lots td.n input{text-align:right}
+.lots tr.edited td{background:#f5f8ff}
+.lots tr.hot td{background:#fff7b0}
+.lots .tot td{font-weight:700;background:#f7f7f7}
+.lots .pg{display:flex;gap:6px;align-items:center;padding:5px 8px;border-top:1px solid #d3d5d9}
+.match{font-weight:700}.match.ok{color:#15803d}.match.bad{color:#b91c1c}
+/* analysis */
+.an{padding:12px 14px}
+.an h4{margin:14px 0 6px;font-size:12.5px}
+.an table{width:100%;border-collapse:collapse;font-size:11.5px;background:#fff;border:1px solid #c9cbd0}
+.an th{background:#eceef1;text-align:left;padding:4px 6px;border-bottom:1px solid #c9cbd0}
+.an td{padding:3px 6px;border-bottom:1px solid #eceef1;vertical-align:top}
+.an tr.click{cursor:pointer}.an tr.click:hover td{background:#eef4fd}
+.an .ck{display:flex;gap:6px;margin:3px 0;line-height:1.45}
+.an .ck i{font-style:normal;font-weight:700}
+.lvl-ok{color:#15803d}.lvl-warn{color:#b45309}.lvl-info{color:#1d4ed8}
+.mlabel{position:fixed;z-index:70;pointer-events:none;background:#111827;color:#fff;border-radius:7px;padding:6px 9px;font-size:12px;line-height:1.4;max-width:320px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:none}
+.mlabel .v{font-family:var(--mono)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 14px;border-radius:9px;z-index:90;font-weight:500;display:none;max-width:80vw}
+.scrim{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:80;display:none;align-items:center;justify-content:center;padding:24px}
+.modal{background:#fff;border-radius:12px;width:min(820px,100%);max-height:100%;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.mhead{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}.mhead h3{margin:0;font-size:15px}
+.mbody{padding:12px 18px;overflow:auto}.mfoot{padding:10px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.logs{margin-top:10px;background:#0f172a;color:#cbd5e1;border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:11px;max-height:200px;overflow:auto;white-space:pre-wrap}
+.spinner{width:15px;height:15px;border:2px solid rgba(47,91,234,.25);border-top-color:#2f5bea;border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading{padding:40px;text-align:center;color:var(--ink2)}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><div class="mark">TAX</div>Drake data entry</div>
+  <span class="file" id="fileName">Loading…</span>
+  <label class="btn ghost"><input type="file" id="fileInput" accept="application/pdf" hidden>Upload PDF</label>
+  <div class="sp"></div>
+  <div class="dstat"><span class="ldot" id="ldot"></span><span class="t" id="ltxt">Checking Drake…</span></div>
+  <a class="btn" href="/w2-mapping" title="The exact Drake W-2 screen with drag-and-drop mapping">W-2 screen</a>
+</header>
+<div id="staleBar" hidden style="flex:0 0 auto;background:#fdecec;color:#991b1b;border-bottom:1px solid #f5b5b5;padding:7px 14px;font-weight:600">
+  The app server is running an older version of the code. In the server window press Ctrl+C, run <code>python app.py</code> again, then reload this page.
+</div>
+<main id="main">
+  <section class="pane" id="pdfPane">
+    <div class="phead">
+      <span class="lbl" id="pdfTitle">PDF</span>
+      <div class="pchips" id="pchips"></div>
+      <div class="sp"></div>
+      <button class="btn icon" id="prevPage">‹</button><span class="lbl" id="pageLbl">–</span><button class="btn icon" id="nextPage">›</button>
+      <button class="btn icon" id="zoomOut">−</button><button class="btn icon" id="zoomIn">+</button>
+    </div>
+    <div id="pdfScroll"><div id="pdfStage"><canvas id="pdfCanvas"></canvas><div id="pdfOverlay"></div></div></div>
+  </section>
+  <div id="split"></div>
+  <section class="pane" id="rightPane">
+    <div id="dkScroll"><div class="loading"><span class="spinner"></span> Analyzing every page of the tax packet…</div></div>
+  </section>
+</main>
+<div class="mlabel" id="tip"></div><div class="toast" id="toast"></div>
+<div class="scrim" id="scrim"><div class="modal"><div class="mhead"><h3 id="mTitle"></h3><button class="btn ghost" style="margin-left:auto" onclick="closeModal()">✕</button></div><div class="mbody" id="mBody"></div><div class="mfoot" id="mFoot"></div></div></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = document.querySelector('script[src*="cdnjs"]') ? "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js" : "/static/vendor/pdfjs/pdf.worker.min.js";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isBlank = v => v === '' || v === null || v === undefined;
+const fmtMoney = v => { const n = parseFloat(String(v).replace(/[,$]/g,'')); return isNaN(n) ? String(v ?? '') : n.toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2}); };
+function toast(msg, ms=3000){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>t.style.display='none', ms); }
+async function api(url, opts={}){
+  try{ const r = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opts});
+    let j; try{ j = await r.json(); }catch(e){ j = {success:false, error:`Server returned HTTP ${r.status}`}; }
+    if(j && typeof j==='object'){ j.httpStatus = r.status; if(r.status===404 && j.success!==true) j.notFound = true; } return j;
+  }catch(e){ return {success:false, offline:true, error:'Cannot reach the app server ('+e.message+'). Is python app.py running?'}; }
+}
+function closeModal(){ $('#scrim').style.display='none'; }
+function modal(title, body, foot){ $('#mTitle').textContent=title; $('#mBody').innerHTML=body; $('#mFoot').innerHTML=foot||'<button class="btn" onclick="closeModal()">Close</button>'; $('#scrim').style.display='flex'; }
+
+/* =====================================================================================
+   State — everything the user changes is kept per PDF (edits, confirmations, results)
+   ===================================================================================== */
+const S = { A:null, forms:{}, view:'menu', tab:null, sel:null, pdf:null, page:1, zoom:1, boxes:[],
+  edits:{}, conf:{}, sent:{}, lotEdits:{}, lotsOk:{}, lotPage:{}, lotFilter:{} };
+function storeKey(){ return 'pkt.'+(S.A ? S.A.file : ''); }
+function save(){ try{ localStorage.setItem(storeKey(), JSON.stringify({edits:S.edits, conf:S.conf, sent:S.sent, lotEdits:S.lotEdits, lotsOk:S.lotsOk})); }catch(e){} }
+function load(){ try{ const d = JSON.parse(localStorage.getItem(storeKey())||'{}'); Object.assign(S, {edits:d.edits||{}, conf:d.conf||{}, sent:d.sent||{}, lotEdits:d.lotEdits||{}, lotsOk:d.lotsOk||{}}); }catch(e){} }
+
+/* =====================================================================================
+   Values, validation and status
+   ===================================================================================== */
+const fieldOf = (f, key) => f.fields.find(x=>x.key===key);
+function val(f, key){ const e = S.edits[f.id]; if(e && key in e) return e[key]; const x = fieldOf(f,key); return x ? x.value : ''; }
+function shown(f, x){ const v = val(f, x.key); if(typeof v==='boolean') return v; if(x.type==='money' && !isBlank(v) && !(S.edits[f.id] && x.key in S.edits[f.id])) return fmtMoney(v); return isBlank(v) ? '' : String(v); }
+function normalize(type, raw){
+  if(typeof raw==='boolean') return raw;
+  const t = String(raw ?? '').trim(); if(!t) return '';
+  if(type==='money'){ const neg = /^\(.*\)$/.test(t) || t.startsWith('-'); const n = parseFloat(t.replace(/[^\d.]/g,'')); return isNaN(n) ? t : ((neg?'-':'')+n.toFixed(2)); }
+  return t.toUpperCase();
+}
+function fieldErr(x, v){
+  if(typeof v==='boolean' || isBlank(v)) return '';
+  const s = String(v).replace(/,/g,'');
+  if(x.type==='money') return /^-?\d+(\.\d{1,2})?$/.test(s) ? '' : 'Enter an amount like 1234.56';
+  if(x.type==='date') return /^\d{2}\/\d{2}\/\d{4}$/.test(String(v)) ? '' : 'Use MM/DD/YYYY';
+  if(x.type==='percent') return /^\d+(\.\d+)?%?$/.test(s) ? '' : 'Enter a percentage';
+  if(x.key==='dist_code') return /^[1-9A-Z]{1,2}$/.test(s) ? '' : 'Distribution code is 1–2 characters';
+  if(/_tin$|^ein$/.test(x.key)) return /^(\d{2}-?\d{7}|\*{3}-\*{2}-\d{4}|\d{3}-?\d{2}-?\d{4}|XXX-XX-\d{4})$/i.test(String(v)) ? '' : 'Not a valid TIN';
+  return '';
+}
+const sendable = f => f.transfer==='filler' && !f.zero_value;
+function fstate(f, x){
+  const v = val(f, x.key), err = fieldErr(x, v);
+  if(err) return 'err';
+  if(S.sent[f.id] && S.sent[f.id][x.key]) return 'sent';
+  if(S.conf[f.id] && S.conf[f.id][x.key]) return 'conf';
+  if(S.edits[f.id] && x.key in S.edits[f.id]) return 'edited';
+  return (typeof v==='boolean' ? v : !isBlank(v)) ? 'ok' : 'blank';
+}
+function hasVal(f, x){ const v = val(f, x.key); if(typeof v==='boolean') return v; return !isBlank(v) && !(x.type==='money' && parseFloat(String(v).replace(/,/g,''))===0); }
+function formStatus(f){
+  if(f.zero_value) return {cls:'zero', txt:'all zero'};
+  if(f.transfer==='none') return {cls:'none', txt:'review'};
+  const xs = f.fields.filter(x=>hasVal(f,x)), c = xs.filter(x=>S.conf[f.id] && S.conf[f.id][x.key]).length;
+  if(f.type==='1099-B' && S.lotsOk[f.id] && c===xs.length) return {cls:'done', txt:'confirmed'};
+  if(xs.length && c===xs.length) return {cls:'done', txt:'confirmed'};
+  return c ? {cls:'part', txt:`${c}/${xs.length}`} : {cls:'none', txt:'to review'};
+}
+
+/* =====================================================================================
+   Drake Data Entry Menu (module tabs + screen buttons)
+   ===================================================================================== */
+const ALL_TABS = ['General','Income','Adjustments','Credits','Taxes','Health Care','Other Forms','Foreign','Miscellaneous','States'];
+function winTitle(){ const tp = S.A.forms.find(f=>f.type==='TAXPAYER'); return tp ? `${esc(val(tp,'name'))} &nbsp;(${esc(String(val(tp,'ssn')).replace(/\D/g,''))})` : esc(S.A.file); }
+function toolbar(active){
+  return `<div class="toolbar">
+    <button class="tb" onclick="showMenu()" ${active==='menu'?'disabled':''}><span class="ic">▤</span>Screen Menu</button>
+    <button class="tb" onclick="showAnalysis()" ${active==='analysis'?'disabled':''}><span class="ic">🔍</span>Packet Analysis</button>
+    <button class="tb" onclick="prevRecord()" ${active!=='screen'?'disabled':''}><span class="ic">⬅</span>Previous</button>
+    <button class="tb" onclick="nextRecord()" ${active!=='screen'?'disabled':''}><span class="ic">➡</span>Next</button>
+    <button class="tb" onclick="confirmAll()" ${active!=='screen'?'disabled':''}><span class="ic">✔</span>Confirm valid</button>
+    <button class="tb" onclick="resetForm()" ${active!=='screen'?'disabled':''}><span class="ic">↺</span>Reset to PDF</button>
+  </div>`;
+}
+function showMenu(tab){
+  S.view='menu'; if(tab) S.tab=tab; if(!S.tab) S.tab = S.A.modules[0].name; clearPdfBoxes();
+  const present = Object.fromEntries(S.A.modules.map(m=>[m.name,m]));
+  const tabs = ALL_TABS.map(t=> present[t]
+      ? `<div class="mtab ${t===S.tab?'on':''}" onclick="showMenu('${t}')">${t}<span class="n">(${present[t].count})</span></div>`
+      : `<div class="mtab absent" title="No ${t} forms in this tax packet">${t}</div>`).join('');
+  const mod = present[S.tab];
+  const btns = mod.screens.map(s=>{
+    const fs = s.forms.map(id=>S.forms[id]), sts = fs.map(formStatus);
+    const done = sts.filter(x=>x.cls==='done'||x.cls==='zero'||x.cls==='none').length;
+    const st = fs.every(f=>f.zero_value) ? {cls:'zero',txt:'all zero'} : done===fs.length ? {cls:'done',txt:'done'} : sts.some(x=>x.cls!=='none') ? {cls:'part',txt:`${done}/${fs.length}`} : {cls:'none',txt:'to review'};
+    return `<button class="sbtn" onclick="openForm('${fs[0].id}')"><span class="code">${esc(s.button)}</span><span class="nm">${esc(s.name)}</span>
+      <span class="cnt">${fs.length>1?fs.length+' records':''}</span><span class="st ${st.cls}">${st.txt}</span></button>`;
+  }).join('');
+  $('#dkScroll').innerHTML = `<div class="dwin"><div class="title"><b>Data Entry Menu</b> — ${winTitle()}</div>${toolbar('menu')}
+    <div class="mtabs">${tabs}</div><div class="mgrid">${btns}</div>
+    <div class="legendrow">Greyed tabs have no forms in this packet. Each button opens the Drake screen for those forms; records follow the packet order.</div></div>`;
+  $('#pdfTitle').textContent = 'PDF'; $('#pchips').innerHTML='';
+}
+
+/* =====================================================================================
+   Drake-style data-entry screen for one form (built from the registry fields)
+   ===================================================================================== */
+function siblings(f){ return S.A.forms.filter(x=>x.screen===f.screen); }
+function openForm(id, keepPage){
+  const f = S.forms[id]; if(!f) return;
+  S.view='screen'; S.sel=id; S.tab=f.module;
+  renderScreen();
+  const pg = f.pages.includes(S.page) && keepPage ? S.page : f.page;
+  renderPage(pg);
+  $('#pdfTitle').textContent = `${f.type} · ${f.payer}`;
+  const chips = f.pages.length > 12 ? [f.page, ...[...new Set((f.lots||[]).map(l=>l.page))].slice(0,1), f.pages[f.pages.length-1]] : f.pages;
+  $('#pchips').innerHTML = (f.pages.length>1?'<span class="lbl">pages</span>':'') + [...new Set(chips)].map(p=>`<span class="pchip" data-p="${p}">${p}</span>`).join('') + (f.pages.length>12?`<span class="lbl">… ${f.pages[0]}–${f.pages[f.pages.length-1]}</span>`:'');
+  $('#pchips').querySelectorAll('.pchip').forEach(c=>c.onclick=()=>renderPage(+c.dataset.p));
+}
+function prevRecord(){ const f=S.forms[S.sel], sib=siblings(f), i=sib.indexOf(f); if(i>0) openForm(sib[i-1].id); }
+function nextRecord(){ const f=S.forms[S.sel], sib=siblings(f), i=sib.indexOf(f); if(i<sib.length-1) openForm(sib[i+1].id); }
+function fieldRow(f, x){
+  const st = fstate(f, x), v = shown(f, x), err = fieldErr(x, val(f,x.key));
+  const conf = S.conf[f.id] && S.conf[f.id][x.key];
+  const ctl = x.type==='bool' ? `<span class="chkf"><input type="checkbox" data-k="${x.key}" ${v===true?'checked':''}> ${v===true?'Checked':''}</span>`
+    : `<input data-k="${x.key}" class="${x.type==='money'?'amt':''}" value="${esc(v)}" spellcheck="false" autocomplete="off">`;
+  const w = x.type==='money' ? 'w-amt' : (['code','percent','date'].includes(x.type) || /tin|ein|number|zip|state/.test(x.key)) ? 'w-s' : '';
+  const mark = sendable(f) && hasVal(f,x) ? `<span class="cfm ${conf?'on':''}" data-c="${x.key}" title="${conf?'Confirmed — click to un-confirm':'Click to confirm this value for Drake'}"></span>` : '';
+  return `<div class="fr" data-row="${x.key}"><span class="bx">${esc(x.box)}</span><span class="lb">${esc(x.label)}</span>
+    <span class="in ${w} s-${st}">${ctl}${mark}</span>${err?`<span class="ferr">${esc(err)}</span>`:''}</div>`;
+}
+function renderScreen(){
+  const f = S.forms[S.sel], sib = siblings(f), i = sib.indexOf(f);
+  const ident = f.fields.filter(x=>!x.box || /^[A-Z]$/.test(x.box) && f.type!=='1099-B');
+  const boxes = f.fields.filter(x=>!ident.includes(x));
+  const recs = sib.map(s=>{ const st = formStatus(s); return `<span class="rec ${s.id===f.id?'on':''}" onclick="openForm('${s.id}')">${esc(s.payer||s.type)} · p.${s.page}<span class="st ${st.cls}">${st.txt}</span></span>`; }).join('');
+  const checks = S.A.checks.filter(c=>c.form===f.id || (f.derived_from||[]).includes(c.form));
+  const rels = S.A.relationships.filter(r=>r.forms.includes(f.id) && r.kind!=='composite statement');
+  let banners = '';
+  if(f.zero_value) banners += `<div class="banner info">Every amount on this ${esc(f.type)} is zero — Drake needs no entry for it. Shown so nothing in the packet is skipped.</div>`;
+  if(f.transfer==='none') banners += `<div class="banner info">Review screen built from ${esc((f.derived_from||[]).map(id=>S.forms[id]?S.forms[id].type+' p.'+S.forms[id].page:id).join(', ') || 'the packet')}. Drake fills this from the other forms, so nothing is sent from here.</div>`;
+  if(f.transfer==='w2page') banners += `<div class="banner info">The W-2 has an exact copy of Drake's Screen W2 with drag-and-drop mapping — use <a href="/w2-mapping">Open the W-2 screen</a> to confirm and send it.</div>`;
+  checks.filter(c=>c.level!=='ok').forEach(c=>banners += `<div class="banner ${c.level==='warn'?'warn':'info'}">${esc(c.text)}</div>`);
+  checks.filter(c=>c.level==='ok').forEach(c=>banners += `<div class="banner ok">✓ ${esc(c.text)}</div>`);
+  rels.forEach(r=>banners += `<div class="banner info">↔ ${esc(r.text)}</div>`);
+  const acts = sendable(f)
+    ? `<button class="btn primary" onclick="transfer('${f.id}')">Send confirmed values to Drake</button><span class="msg" id="fmsg">Only fields with a green ✓ are sent. Typing a value confirms it.</span>`
+    : f.transfer==='w2page' ? `<a class="btn primary" href="/w2-mapping">Open the exact W-2 screen</a>` : `<span class="msg">Review only.</span>`;
+  $('#dkScroll').innerHTML = `<div class="dwin"><div class="title"><b>${esc(f.screen_name)}</b> — ${winTitle()}</div>${toolbar('screen')}
+    <div class="scrhead"><span class="code">${esc(f.button)}</span><h3>${esc(f.type==='TAXPAYER'?'Name and Address':f.type==='FOREIGN'?'Foreign Tax Credit (1116)':'Form '+f.type)}</h3>
+      <span style="color:#555">${esc(f.payer)}</span>
+      <div class="recnav"><button onclick="prevRecord()" ${i===0?'disabled':''}>◀</button> Record <b>${i+1}</b> of ${sib.length} <button onclick="nextRecord()" ${i===sib.length-1?'disabled':''}>▶</button></div></div>
+    ${sib.length>1?`<div class="reclist">${recs}</div>`:''}
+    ${banners}
+    <div class="fbody">
+      <div class="grp"><span class="lg">${f.type==='1099-B'?'Broker':'Payer / identification'}</span>${ident.map(x=>fieldRow(f,x)).join('') || '<div style="color:#777">—</div>'}</div>
+      <div class="grp"><span class="lg">${f.type==='1099-B'?'Summary by term (Form 8949 box)':'Amounts'}</span>${boxes.map(x=>fieldRow(f,x)).join('')}</div>
+    </div>
+    ${f.type==='1099-B' ? lotsHTML(f) : ''}
+    <div class="actions">${acts}</div></div>`;
+  bindScreen(f);
+}
+function bindScreen(f){
+  $('#dkScroll').querySelectorAll('[data-k]').forEach(c=>{
+    const key = c.dataset.k, x = fieldOf(f, key), row = c.closest('.fr');
+    const commit = () => {
+      const v = c.type==='checkbox' ? c.checked : normalize(x.type, c.value);
+      S.edits[f.id] = S.edits[f.id] || {};
+      const orig = typeof x.value==='boolean' ? x.value : normalize(x.type, x.value);
+      if(String(v)===String(orig)) delete S.edits[f.id][key]; else S.edits[f.id][key] = v;
+      if(sendable(f)){ S.conf[f.id] = S.conf[f.id] || {}; if(!fieldErr(x, v)) S.conf[f.id][key] = true; else delete S.conf[f.id][key]; }
+      if(S.sent[f.id]) delete S.sent[f.id][key];
+      save(); renderScreen(); drawPdfBoxes();
+    };
+    c.addEventListener('change', commit);
+    c.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); c.blur(); } });
+    row.addEventListener('mouseenter', ()=>hoverField(f, key, row)); row.addEventListener('mouseleave', unhover);
+  });
+  $('#dkScroll').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{
+    const key=b.dataset.c, x=fieldOf(f,key); S.conf[f.id]=S.conf[f.id]||{};
+    if(S.conf[f.id][key]) delete S.conf[f.id][key]; else { const e=fieldErr(x,val(f,key)); if(e){ toast('Fix it first: '+e); return; } S.conf[f.id][key]=true; }
+    save(); renderScreen(); drawPdfBoxes();
+  });
+  if(f.type==='1099-B') bindLots(f);
+}
+function confirmAll(){
+  const f = S.forms[S.sel]; if(!sendable(f)){ toast('Nothing on this screen is sent to Drake.'); return; }
+  S.conf[f.id] = S.conf[f.id] || {}; let n=0;
+  f.fields.forEach(x=>{ if(hasVal(f,x) && !fieldErr(x,val(f,x.key)) && !S.conf[f.id][x.key]){ S.conf[f.id][x.key]=true; n++; } });
+  save(); renderScreen(); drawPdfBoxes(); toast(`Confirmed ${n} value(s) on this screen.`);
+}
+function resetForm(){ const f=S.forms[S.sel]; delete S.edits[f.id]; delete S.conf[f.id]; delete S.sent[f.id]; delete S.lotEdits[f.id]; delete S.lotsOk[f.id]; save(); renderScreen(); drawPdfBoxes(); toast('Values taken from the PDF again; confirmations cleared.'); }
+
+/* =====================================================================================
+   1099-B sale lots (Form 8949 detail) — paged, editable, reconciled to the summary
+   ===================================================================================== */
+const LOT_COLS = [['description','Description',''],['quantity','Qty','n'],['date_acquired','Acquired',''],['date_sold','Sold',''],['proceeds','Proceeds','n'],['cost','Cost basis','n'],['adj_code','Code',''],['adjustment','Adjustment','n'],['gain','Gain/loss','n']];
+const PER = 25;
+function lotVal(f, i, k){ const e = S.lotEdits[f.id] && S.lotEdits[f.id][i]; return e && k in e ? e[k] : f.lots[i][k]; }
+function lotRows(f){ const flt = S.lotFilter[f.id] || 'all'; return f.lots.map((l,i)=>i).filter(i=>flt==='all' || f.lots[i].term===flt || (flt==='W' && f.lots[i].adj_code==='W')); }
+function lotsHTML(f){
+  const rows = lotRows(f), pg = Math.min(S.lotPage[f.id]||0, Math.max(0, Math.ceil(rows.length/PER)-1)), slice = rows.slice(pg*PER, pg*PER+PER);
+  const sum = (term, k) => f.lots.reduce((t,l,i)=> l.term===term ? t + (parseFloat(lotVal(f,i,k))||0) : t, 0);
+  const tot = ['Short','Long'].map(term=>{
+    const key = term==='Short'?'short_term':'long_term', p=sum(term,'proceeds'), c=sum(term,'cost'), a=sum(term,'adjustment');
+    const ep = parseFloat(val(f,key+'_proceeds'))||0, ec = parseFloat(String(val(f,key+'_cost_basis')).replace(/,/g,''))||0;
+    const ok = Math.abs(p-parseFloat(String(ep).replace(/,/g,'')))<0.05 && Math.abs(c-ec)<0.05;
+    return `<tr class="tot"><td colspan="4">${term}-term · ${f.lots.filter(l=>l.term===term).length} lots (box ${esc((f.lots.find(l=>l.term===term)||{}).box||'')})</td>
+      <td class="n">${fmtMoney(p)}</td><td class="n">${fmtMoney(c)}</td><td></td><td class="n">${fmtMoney(a)}</td><td class="n"><span class="match ${ok?'ok':'bad'}">${ok?'✓ = summary':'≠ summary'}</span></td><td></td></tr>`; }).join('');
+  const body = slice.map(i=>{ const ed = S.lotEdits[f.id] && S.lotEdits[f.id][i];
+    return `<tr data-lot="${i}" class="${ed?'edited':''}">${LOT_COLS.map(([k,,n])=>`<td class="${n}"><input data-lk="${k}" value="${esc(n && k!=='quantity' ? fmtMoney(lotVal(f,i,k)) : lotVal(f,i,k))}"></td>`).join('')}<td style="color:#777">${f.lots[i].term[0]}/${esc(f.lots[i].box)} · p.${f.lots[i].page}</td></tr>`; }).join('');
+  const nP = Math.ceil(rows.length/PER);
+  return `<div class="lots"><div class="lh"><b>Form 8949 sale lots</b> <span>${f.lots.length} lots from pages ${f.lots.length?Math.min(...f.lots.map(l=>l.page)):''}–${f.lots.length?Math.max(...f.lots.map(l=>l.page)):''}</span>
+      <select id="lotFilter"><option value="all">All lots</option><option value="Short">Short-term</option><option value="Long">Long-term</option><option value="W">Wash sales (W)</option></select>
+      <label style="margin-left:auto;display:flex;gap:5px;align-items:center"><input type="checkbox" id="lotsOk" ${S.lotsOk[f.id]?'checked':''}> I reviewed these lots</label>
+      <button class="btn" id="mkImport" ${S.lotsOk[f.id]?'':'disabled'} title="Writes a Drake Form 8949 import file with the confirmed lots">Create Drake 8949 import</button></div>
+    <div style="max-height:360px;overflow:auto"><table><thead><tr>${LOT_COLS.map(([,h,n])=>`<th class="${n}">${h}</th>`).join('')}<th>Term/box · page</th></tr></thead><tbody>${body}</tbody><tfoot>${tot}</tfoot></table></div>
+    <div class="pg"><button class="btn icon" id="lotPrev" ${pg===0?'disabled':''}>‹</button> Page ${pg+1} of ${nP||1} · ${rows.length} lots shown <button class="btn icon" id="lotNext" ${pg>=nP-1?'disabled':''}>›</button>
+      <span style="color:#777;margin-left:auto">Edit any cell; totals re-check against the broker's summary.</span></div></div>`;
+}
+function bindLots(f){
+  const flt = $('#lotFilter'); flt.value = S.lotFilter[f.id] || 'all';
+  flt.onchange = ()=>{ S.lotFilter[f.id] = flt.value; S.lotPage[f.id] = 0; renderScreen(); };
+  $('#lotPrev').onclick = ()=>{ S.lotPage[f.id] = Math.max(0,(S.lotPage[f.id]||0)-1); renderScreen(); };
+  $('#lotNext').onclick = ()=>{ S.lotPage[f.id] = (S.lotPage[f.id]||0)+1; renderScreen(); };
+  $('#lotsOk').onchange = e=>{ S.lotsOk[f.id] = e.target.checked; save(); renderScreen(); };
+  $('#mkImport').onclick = ()=>make8949(f);
+  $('#dkScroll').querySelectorAll('tr[data-lot]').forEach(tr=>{
+    const i = +tr.dataset.lot;
+    tr.addEventListener('mouseenter', ()=>{ tr.classList.add('hot'); if(f.lots[i].page!==S.page) renderPage(f.lots[i].page).then(()=>hotLot(f,i)); else hotLot(f,i); });
+    tr.addEventListener('mouseleave', ()=>{ tr.classList.remove('hot'); document.querySelectorAll('.fx.hot').forEach(x=>x.classList.remove('hot')); });
+    tr.querySelectorAll('[data-lk]').forEach(inp=>inp.addEventListener('change', ()=>{
+      const k = inp.dataset.lk, n = ['proceeds','cost','adjustment','gain','quantity'].includes(k);
+      let v = inp.value.trim(); if(n){ const x = parseFloat(v.replace(/[,$]/g,'')); if(isNaN(x)){ toast('Enter a number'); return; } v = x.toFixed(2); }
+      S.lotEdits[f.id] = S.lotEdits[f.id] || {}; S.lotEdits[f.id][i] = {...(S.lotEdits[f.id][i]||{}), [k]: v};
+      S.lotsOk[f.id] = false; save(); renderScreen();
+    }));
+  });
+}
+async function make8949(f){
+  const forms = S.A.forms.filter(x=>x.type==='1099-B' && S.lotsOk[x.id]);
+  const lots = forms.flatMap(x=>x.lots.map((l,i)=>({form_id:x.id, description:lotVal(x,i,'description'), quantity:lotVal(x,i,'quantity'),
+    date_acquired:lotVal(x,i,'date_acquired'), date_sold:lotVal(x,i,'date_sold'), proceeds:lotVal(x,i,'proceeds'), cost:lotVal(x,i,'cost'),
+    adj_code:lotVal(x,i,'adj_code'), adjustment:lotVal(x,i,'adjustment')})));
+  modal('Create Drake 8949 import', `<div class="loading"><span class="spinner"></span> Writing ${lots.length} reviewed lot(s) from ${forms.length} broker statement(s)…</div>`, ' ');
+  const r = await api('/api/packet/8949-import', {method:'POST', body:JSON.stringify({lots, mode:'Append'})});
+  modal(r.success ? 'Drake 8949 import file created' : 'Could not create the import file',
+    r.success ? `<p>${esc(r.message)}</p><p style="color:#92400e">Only brokers whose lots you marked as reviewed are included (${forms.map(x=>esc(x.payer)).join(', ')}). The file uses the existing import generator's format, which has not yet been tested with your Drake — open it in Drake and check a few lots before relying on it.</p><div class="logs">${r.preview.map(esc).join('\n')}\n…</div>`
+              : `<p>${esc(r.error)}</p>`);
+}
+
+/* =====================================================================================
+   Send confirmed values of one form to Drake
+   ===================================================================================== */
+async function transfer(id){
+  const f = S.forms[id], conf = S.conf[f.id] || {};
+  const values = {}; f.fields.forEach(x=>{ if(conf[x.key]){ let v = val(f,x.key); if(x.type==='money') v = String(v).replace(/,/g,''); values[x.key] = v; } });
+  const n = Object.keys(values).length, notc = f.fields.filter(x=>hasVal(f,x) && !conf[x.key]);
+  if(!n){ toast('Confirm at least one value first (click its circle, or “Confirm valid”).', 4000); return; }
+  modal(`Send ${f.type} to Drake`, `<p>These <b>${n}</b> confirmed value(s) will be entered on Drake screen <b>${esc(f.screen)}</b>, record <b>${f.record}</b> of ${f.records}:</p>
+    <table class="an" style="width:100%">${Object.entries(values).map(([k,v])=>`<tr><td>${esc((fieldOf(f,k).box?'Box '+fieldOf(f,k).box+' · ':'')+fieldOf(f,k).label)}</td><td style="font-family:var(--mono)">${esc(typeof v==='boolean'?(v?'Checked':'Not checked'):v)}</td></tr>`).join('')}</table>
+    ${notc.length?`<p style="color:#92400e">Not confirmed — NOT sent: ${notc.map(x=>esc(x.label)).join(', ')}</p>`:''}`,
+    `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" id="goSend">Send to Drake</button>`);
+  $('#goSend').onclick = async ()=>{
+    $('#goSend').disabled = true; $('#goSend').innerHTML = '<span class="spinner" style="border-color:rgba(255,255,255,.4);border-top-color:#fff"></span> Entering in Drake…';
+    const r = await api('/api/packet/transfer', {method:'POST', body:JSON.stringify({form_id:f.id, values})});
+    if(r.notFound){ $('#staleBar').hidden = false; }
+    if(r.success){ S.sent[f.id] = S.sent[f.id] || {}; (r.sent||[]).forEach(k=>S.sent[f.id][k]=true); save(); renderScreen(); drawPdfBoxes(); }
+    modal(r.success ? 'Entered in Drake' : 'Drake needs attention', `<p>${esc(r.message || r.error || '')}</p>${r.logs&&r.logs.length?`<div class="logs">${r.logs.map(esc).join('\n')}</div>`:''}`);
+  };
+}
+
+/* =====================================================================================
+   Packet analysis view
+   ===================================================================================== */
+function showAnalysis(){
+  S.view='analysis'; clearPdfBoxes();
+  const A = S.A, real = A.forms.filter(f=>!['TAXPAYER','FOREIGN'].includes(f.type));
+  const types = {}; real.forEach(f=>types[f.type]=(types[f.type]||0)+1);
+  const rows = A.forms.map(f=>{ const st = formStatus(f); return `<tr class="click" onclick="openForm('${f.id}')"><td>${esc(f.module)}</td><td><b>${esc(f.screen)}</b></td><td>${esc(f.type==='TAXPAYER'?'Name & address':f.type==='FOREIGN'?'Foreign tax summary':f.type)}</td>
+    <td>${esc(f.payer)}</td><td>${f.pages.length>1?f.pages[0]+'–'+f.pages[f.pages.length-1]:f.page}</td><td>${f.fields.filter(x=>hasVal(f,x)).length}/${f.fields.length}${f.lots?` + ${f.lots.length} lots`:''}</td><td><span class="st ${st.cls}" style="font-size:10.5px;border-radius:8px;padding:0 6px;font-weight:700">${st.txt}</span></td></tr>`; }).join('');
+  $('#dkScroll').innerHTML = `<div class="dwin"><div class="title"><b>Packet Analysis</b> — ${esc(A.file)}</div>${toolbar('analysis')}<div class="an">
+    <div><b>${A.total_pages} pages</b> · <b>${real.length}</b> information returns · ${Object.entries(types).map(([t,n])=>`${n}× ${esc(t)}`).join(', ')}
+      · ${A.forms.filter(f=>f.type==='1099-B').reduce((t,f)=>t+f.lots.length,0)} sale lots · ${A.composites.length} brokerage composite statement(s)</div>
+    <div style="margin-top:4px;color:#555">Modules with forms: ${A.modules.map(m=>esc(m.name)).join(', ')} · not in this packet: ${A.absent_modules.map(esc).join(', ')}</div>
+    <h4>Detected forms (click to open)</h4><table><tr><th>Module</th><th>Screen</th><th>Form</th><th>Payer</th><th>Pages</th><th>Fields with values</th><th>Status</th></tr>${rows}</table>
+    <h4>Checks</h4>${A.checks.map(c=>`<div class="ck"><i class="lvl-${c.level}">${c.level==='ok'?'✓':c.level==='warn'?'⚠':'ℹ'}</i><span>${esc(c.text)}</span></div>`).join('')}
+    <h4>Relationships</h4>${A.relationships.map(r=>`<div class="ck"><i class="lvl-info">↔</i><span><b>${esc(r.kind)}:</b> ${esc(r.text)}</span></div>`).join('')}
+  </div></div>`;
+  $('#pdfTitle').textContent='PDF'; $('#pchips').innerHTML='';
+}
+
+/* =====================================================================================
+   PDF viewer + field boxes + hover link
+   ===================================================================================== */
+let renderTask=null, pageItems={};
+async function renderPage(n){
+  if(!S.pdf) return;
+  S.page = Math.min(Math.max(1,n), S.pdf.numPages); $('#pageLbl').textContent = `${S.page} / ${S.pdf.numPages}`;
+  document.querySelectorAll('.pchip').forEach(c=>c.classList.toggle('on', +c.dataset.p===S.page));
+  const page = await S.pdf.getPage(S.page), base = page.getViewport({scale:1}), avail = $('#pdfScroll').clientWidth - 20;
+  const vp = page.getViewport({scale: Math.max(0.4, (avail/base.width)*S.zoom)}), dpr = window.devicePixelRatio||1, cv = $('#pdfCanvas');
+  if(renderTask){ try{ renderTask.cancel(); }catch(e){} }
+  cv.width = Math.floor(vp.width*dpr); cv.height = Math.floor(vp.height*dpr); cv.style.width = vp.width+'px'; cv.style.height = vp.height+'px';
+  $('#pdfStage').style.width = vp.width+'px'; $('#pdfStage').style.height = vp.height+'px';
+  renderTask = page.render({canvasContext:cv.getContext('2d'), viewport:vp, transform: dpr!==1?[dpr,0,0,dpr,0,0]:null});
+  try{ await renderTask.promise; }catch(e){ if(e && e.name==='RenderingCancelledException') return; throw e; }
+  pageItems = {items:(await page.getTextContent()).items, vp};
+  drawPdfBoxes();
+}
+function locate(find, part){
+  const {items, vp} = pageItems; if(!items || !find) return null;
+  if(!pageItems.norm){ const chars=[]; items.forEach(it=>{ if(!it.str) return; for(let i=0;i<it.str.length;i++) chars.push({ch:it.str[i], it, off:i}); chars.push({ch:' ', it:null}); });
+    let norm=''; const map=[]; for(const c of chars){ const ws=/\s/.test(c.ch); if(ws && norm.endsWith(' ')) continue; norm += ws?' ':c.ch.toLowerCase(); map.push(c); }
+    pageItems.norm=norm; pageItems.map=map; }
+  const n = s => String(s).replace(/\s+/g,' ').trim().toLowerCase(), needle = n(find); if(!needle) return null;
+  const at = pageItems.norm.indexOf(needle); if(at<0) return null;
+  let a=at, b=at+needle.length; if(part){ const k = needle.indexOf(n(part)); if(k>=0){ a=at+k; b=a+n(part).length; } }
+  let L=1e9,T=1e9,R=-1e9,B=-1e9;
+  for(let i=a;i<b;i++){ const c=pageItems.map[i]; if(!c||!c.it) continue; const tx=pdfjsLib.Util.transform(vp.transform, c.it.transform), fh=Math.hypot(tx[2],tx[3]);
+    const w=c.it.width*vp.scale, len=c.it.str.length||1, x0=tx[4]+w*c.off/len, x1=tx[4]+w*(c.off+1)/len;
+    L=Math.min(L,x0); R=Math.max(R,x1); T=Math.min(T,tx[5]-fh*0.9); B=Math.max(B,tx[5]+fh*0.22); }
+  return R>L ? {x:L-3,y:T-2,w:R-L+6,h:B-T+4} : null;
+}
+function clearPdfBoxes(){ $('#pdfOverlay').innerHTML=''; }
+function drawPdfBoxes(){
+  const ov = $('#pdfOverlay'); ov.innerHTML=''; if(S.view!=='screen') return;
+  const f = S.forms[S.sel]; if(!f) return;
+  for(const x of f.fields){
+    if(!x.find || (x.page!==S.page && !(f.type==='FOREIGN'))) continue;
+    const r = locate(x.find); if(!r) continue;
+    const st = fstate(f,x), d = document.createElement('div');
+    d.className = 'fx' + (st==='conf'||st==='sent'?' conf':st==='edited'?' edited':st==='err'?' err':''); d.dataset.k = x.key;
+    Object.assign(d.style,{left:r.x+'px',top:r.y+'px',width:r.w+'px',height:r.h+'px'});
+    d.onmouseenter = ()=>hoverField(f, x.key, d); d.onmouseleave = unhover;
+    d.onclick = ()=>{ const c = $(`#dkScroll [data-k="${x.key}"]`); if(c){ c.scrollIntoView({block:'nearest'}); c.focus(); } };
+    ov.appendChild(d);
+  }
+}
+function hotLot(f, i){
+  document.querySelectorAll('.fx.lot').forEach(x=>x.remove());
+  const l = f.lots[i], r = locate(`${l.date_sold} ${l.quantity} ${fmtMoney(l.proceeds)}`); if(!r) return;
+  const d = document.createElement('div'); d.className='fx lot hot'; Object.assign(d.style,{left:r.x+'px',top:r.y+'px',width:(r.w+260)+'px',height:r.h+'px'});
+  $('#pdfOverlay').appendChild(d);
+  const s = $('#pdfScroll'), sr = s.getBoundingClientRect(), dr = d.getBoundingClientRect();
+  if(dr.top < sr.top+20 || dr.bottom > sr.bottom-10) s.scrollBy({top: dr.top - sr.top - sr.height/2, behavior:'smooth'});
+}
+function hoverField(f, key, el){
+  document.querySelectorAll('.hot').forEach(x=>x.classList.remove('hot'));
+  const x = fieldOf(f,key), box = $(`#pdfOverlay [data-k="${key}"]`), row = $(`#dkScroll [data-row="${key}"] .in`);
+  if(box) box.classList.add('hot'); if(row) row.classList.add('hot');
+  const t = $('#tip'); const v = val(f,key);
+  t.innerHTML = `<b>${esc((x.box?'Box '+x.box+' · ':'')+x.label)}</b><br>PDF: <span class="v">${esc(x.display || '—')}</span> (page ${x.page})${S.edits[f.id]&&key in S.edits[f.id]?`<br>Edited to: <span class="v">${esc(typeof v==='boolean'?(v?'Checked':'Not checked'):v)}</span>`:''}${box?'':'<br><span style="color:#9ca3af">not located on this page</span>'}`;
+  const r = (el===box||!box ? el : el).getBoundingClientRect(); t.style.display='block';
+  t.style.left = Math.min(r.left, innerWidth-t.offsetWidth-8)+'px'; t.style.top = Math.max(8, r.top - t.offsetHeight - 8)+'px';
+  if(box){ const s=$('#pdfScroll'), sr=s.getBoundingClientRect(), br=box.getBoundingClientRect(); if(br.top<sr.top+10||br.bottom>sr.bottom-10) s.scrollBy({top:br.top-sr.top-sr.height/2, behavior:'smooth'}); }
+}
+function unhover(){ document.querySelectorAll('.hot').forEach(x=>x.classList.remove('hot')); $('#tip').style.display='none'; }
+
+/* =====================================================================================
+   Load + wiring
+   ===================================================================================== */
+async function init(){
+  const r = await api('/api/packet/analysis');
+  if(r.notFound){ $('#staleBar').hidden=false; $('#dkScroll').innerHTML='<div class="loading">Restart the app server to load the new module screens.</div>'; return; }
+  if(!r.success){ $('#dkScroll').innerHTML = `<div class="loading">${esc(r.error)}</div>`; return; }
+  S.A = r; r.forms.forEach(f=>S.forms[f.id]=f); load();
+  $('#fileName').textContent = r.file;
+  S.pdf = await pdfjsLib.getDocument({url:'/api/w2-mapping/pdf?t='+Date.now()}).promise;
+  showAnalysis(); renderPage(1);
+  checkDrake();
+}
+async function checkDrake(){
+  const r = await api('/api/drake-view/status');
+  if(r.success){ $('#ldot').className='ldot '+(r.running?'on':'warn'); $('#ltxt').textContent = r.running?(r.title||'Drake Tax 2025'):'Drake Tax 2025 is not running'; setTimeout(checkDrake, 8000); }
+  else { $('#ldot').className='ldot warn'; $('#ltxt').textContent = r.unavailable ? 'Drake not available on this computer' : r.notFound ? 'Restart python app.py' : 'Drake status unknown'; }
+}
+(function splitter(){
+  const sp=$('#split'), main=$('#main'), apply=p=>main.style.setProperty('--split',p+'%'); let saved=40; try{ saved=parseFloat(localStorage.getItem('pkt.split'))||40; }catch(e){} apply(saved);
+  sp.addEventListener('pointerdown', e=>{ e.preventDefault(); sp.classList.add('drag'); sp.setPointerCapture(e.pointerId);
+    const mv=ev=>{ const r=main.getBoundingClientRect(); apply(Math.min(65,Math.max(22,(ev.clientX-r.left)/r.width*100)).toFixed(1)); };
+    const up=()=>{ sp.classList.remove('drag'); sp.removeEventListener('pointermove',mv); sp.removeEventListener('pointerup',up); try{ localStorage.setItem('pkt.split', main.style.getPropertyValue('--split').replace('%','')); }catch(e){} renderPage(S.page); };
+    sp.addEventListener('pointermove',mv); sp.addEventListener('pointerup',up); });
+})();
+$('#prevPage').onclick=()=>renderPage(S.page-1); $('#nextPage').onclick=()=>renderPage(S.page+1);
+$('#zoomIn').onclick=()=>{ S.zoom=Math.min(3,S.zoom+0.2); renderPage(S.page); }; $('#zoomOut').onclick=()=>{ S.zoom=Math.max(0.5,S.zoom-0.2); renderPage(S.page); };
+$('#fileInput').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; const fd=new FormData(); fd.append('file',f); $('#fileName').textContent='Uploading…';
+  let r; try{ r=await (await fetch('/api/w2-mapping/upload',{method:'POST',body:fd})).json(); }catch(err){ r={success:false,error:'Upload failed'}; }
+  if(!r.success){ toast(r.error||'Upload failed'); return; } location.reload(); };
+document.addEventListener('keydown', e=>{ if(e.target.tagName==='INPUT') return;
+  if(e.key==='Escape') closeModal(); if(S.view==='screen' && e.key==='PageDown'){ e.preventDefault(); nextRecord(); } if(S.view==='screen' && e.key==='PageUp'){ e.preventDefault(); prevRecord(); } });
+window.addEventListener('resize', ()=>{ clearTimeout(window._rz); window._rz=setTimeout(()=>renderPage(S.page),150); });
+init().catch(err=>{ console.error(err); $('#dkScroll').innerHTML = `<div class="loading">Could not load: ${esc(err.message)}</div>`; });
+</script>
+</body>
+</html>

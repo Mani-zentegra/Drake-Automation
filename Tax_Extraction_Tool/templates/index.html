@@ -1,1155 +1,4035 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NMG Drake Automation</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    .card-selected {
-      border-color: #0284c7 !important;
-      background-color: #f0f9ff !important;
-      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.25) !important;
-      transform: translateY(-1px);
-    }
-    .custom-scrollbar::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-track {
-      background: #f1f5f9;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 4px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-      background: #94a3b8;
-    }
-  </style>
-</head>
-<body class="bg-slate-50 min-h-screen text-slate-800 font-sans flex flex-col">
-
-  <!-- ========================================================================= -->
-  <!-- MINIMAL CLEAN NAVBAR WITH NMG LOGO                                        -->
-  <!-- ========================================================================= -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-    <div class="max-w-[1700px] mx-auto px-6 py-2.5 flex items-center justify-between gap-4">
-      
-      <!-- Minimal Brand with NMG Logo -->
-      <div class="flex items-center gap-3">
-        <img src="/static/nmg_logo.png" alt="NMG Logo" class="h-10 object-contain">
-        <div class="border-l border-slate-300 pl-3">
-          <span class="text-sm font-bold text-slate-800 tracking-tight block">Drake Automation</span>
-          <span class="text-[11px] text-slate-500 block -mt-0.5">Field Mapping</span>
-        </div>
-      </div>
-
-      <!-- Essential Actions Only -->
-      <div class="flex items-center gap-2.5">
-        <!-- Essential Action 1: Auto-Map Matches -->
-        <button onclick="autoSuggestMappings()" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs transition">
-          <i class="fa-solid fa-wand-magic-sparkles text-indigo-600"></i>
-          <span>Auto-Map Matches</span>
-        </button>
-
-        <!-- Essential Action 2: Save Mappings -->
-        <button onclick="saveFieldMappings()" id="btn-save-mappings" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition">
-          <i class="fa-solid fa-floppy-disk"></i>
-          <span>Save Mappings</span>
-        </button>
-
-        <!-- Notification Bell Icon (Build App Notifications) -->
-        <button onclick="toggleNotificationPanel()" class="relative p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition" title="App Notifications">
-          <i class="fa-solid fa-bell text-sm"></i>
-          <span id="notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-600"></span>
-        </button>
-
-        <!-- Settings (Dedicated Modal) -->
-        <button onclick="openSettingsModal()" class="p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition" title="Settings & Configuration">
-          <i class="fa-solid fa-gear text-sm"></i>
-        </button>
-      </div>
-
-    </div>
-  </header>
-
-  <!-- ========================================================================= -->
-  <!-- BUILD APP NOTIFICATIONS BAR (Appears when operations require attention)  -->
-  <!-- ========================================================================= -->
-  <div id="build-notification-container" class="max-w-[1700px] mx-auto px-6 pt-4 w-full hidden">
-    <div id="build-notification-box" class="p-4 rounded-xl border flex items-start justify-between gap-3 shadow-sm transition-all text-xs">
-      <div class="flex items-start gap-3">
-        <div id="build-notif-icon" class="w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0">
-          <i class="fa-solid fa-circle-check"></i>
-        </div>
-        <div class="space-y-0.5">
-          <div id="build-notif-title" class="font-bold text-slate-900 text-xs">Notification Title</div>
-          <div id="build-notif-message" class="text-slate-600 text-[11px] leading-relaxed">Notification message text goes here.</div>
-        </div>
-      </div>
-      <button onclick="closeBuildNotification()" class="text-slate-400 hover:text-slate-700 text-sm p-1">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
-    </div>
-  </div>
-
-  <!-- ========================================================================= -->
-  <!-- MAIN WORKSPACE                                                            -->
-  <!-- ========================================================================= -->
-  <main class="max-w-[1700px] mx-auto px-4 sm:px-6 py-5 w-full flex-1 space-y-5">
-
-    <!-- MODULE TOOLBAR: CONTROLS + "INSERT INTO DRAKE" (Inside Module) -->
-    <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-      
-      <!-- Left: Form Selector -->
-      <div class="flex items-center gap-3 w-full md:w-auto">
-        <label for="form-select" class="text-xs font-bold text-slate-700 whitespace-nowrap">Zoho Form:</label>
-        <select id="form-select" onchange="onFormSelected()" class="text-xs font-semibold px-3 py-1.5 border border-slate-300 rounded-lg bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none min-w-[200px]">
-          <option value="Personal_Info">Personal Info (Name & Address)</option>
-          <option value="Additional_Information">Additional Information</option>
-          <option value="Checklist">Checklist</option>
-          <option value="Estimated_Tax">Estimated Tax</option>
-        </select>
-        <button onclick="fetchAllMetaAndDrakeFields()" title="Refresh fields from API" class="px-2.5 py-1.5 text-xs text-slate-600 hover:text-blue-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition">
-          <i class="fa-solid fa-rotate mr-1"></i> Refresh
-        </button>
-      </div>
-
-      <!-- Center: Selection Helper Prompt -->
-      <div id="selection-helper-banner" class="flex-1 text-center px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-200 text-xs font-medium text-slate-600">
-        <span id="selection-helper-text">Click a Meta field on the left &rarr; then click a Drake field on the right to connect.</span>
-      </div>
-
-      <!-- Right: Direct "Insert into Drake" & "Stop Automation" Action Buttons -->
-      <div class="flex items-center gap-2.5 w-full md:w-auto justify-end">
-        <!-- PRIMARY ACTION: INSERT INTO DRAKE (REQUIREMENT 2) -->
-        <button onclick="executeInsertIntoDrake()" id="btn-insert-drake" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 transition transform hover:-translate-y-0.5 whitespace-nowrap">
-          <i class="fa-solid fa-bolt text-sm"></i>
-          <span>Insert into Drake</span>
-        </button>
-        <!-- FRONTEND STOP OPTION: STOP AUTOMATION -->
-        <button onclick="stopDrakeAutomation()" id="btn-stop-drake" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md shadow-rose-600/20 transition transform hover:-translate-y-0.5 whitespace-nowrap hidden">
-          <i class="fa-solid fa-circle-stop text-sm"></i>
-          <span>Stop Automation</span>
-        </button>
-      </div>
-
-    </div>
-
-    <!-- MAPPING STATS & PROGRESS -->
-    <div class="flex items-center justify-between text-xs text-slate-500 px-1">
-      <div class="flex items-center gap-2">
-        <span class="font-bold text-slate-800"><span id="stat-mapped-count" class="text-blue-600 font-mono">0</span> / <span id="stat-drake-total" class="font-mono">33</span> Drake Fields Mapped</span>
-        <span>•</span>
-        <span id="stat-percentage-text" class="font-medium">0% Complete</span>
-      </div>
-      <div class="w-48 bg-slate-200 rounded-full h-2 overflow-hidden">
-        <div id="stat-progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
-      </div>
-    </div>
-
-    <!-- 2-COLUMN BALANCED MAPPING GRID -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-
-      <!-- ===================================================================== -->
-      <!-- COLUMN 1: ZOHO CREATOR META FIELDS (6 COLS)                            -->
-      <!-- ===================================================================== -->
-      <div class="lg:col-span-6 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[750px]">
-        
-        <!-- Header -->
-        <div class="p-3.5 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50/70 rounded-t-xl">
-          <div class="flex items-center gap-2 font-bold text-xs text-slate-900">
-            <i class="fa-solid fa-database text-blue-600"></i>
-            <span>Zoho Creator Fields (Meta API)</span>
-          </div>
-          <span id="meta-fields-badge" class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-blue-100 text-blue-800">
-            0 Fields
-          </span>
-        </div>
-
-        <!-- Search Bar -->
-        <div class="p-2.5 border-b border-slate-100 bg-white">
-          <div class="relative">
-            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2 text-slate-400 text-xs"></i>
-            <input type="text" id="meta-search-input" oninput="filterMetaFields()" placeholder="Filter Meta fields by name..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none bg-slate-50/50">
-          </div>
-        </div>
-
-        <!-- Fields Container -->
-        <div id="meta-fields-container" class="p-3 overflow-y-auto custom-scrollbar flex-1 space-y-2">
-          <div class="text-center py-16 text-slate-400 text-xs">Loading Meta fields...</div>
-        </div>
-
-      </div>
-
-      <!-- ===================================================================== -->
-      <!-- COLUMN 2: DRAKE TAX TARGET FIELDS (6 COLS)                             -->
-      <!-- ===================================================================== -->
-      <div class="lg:col-span-6 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[750px]">
-        
-        <!-- Header -->
-        <div class="p-3.5 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50/70 rounded-t-xl">
-          <div class="flex items-center gap-2 font-bold text-xs text-slate-900">
-            <i class="fa-solid fa-desktop text-emerald-600"></i>
-            <span id="drake-screen-title">Drake Tax Target Fields</span>
-          </div>
-          <span id="drake-fields-badge" class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800">
-            33 Fields
-          </span>
-        </div>
-
-        <!-- Search Bar -->
-        <div class="p-2.5 border-b border-slate-100 bg-white">
-          <div class="relative">
-            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2 text-slate-400 text-xs"></i>
-            <input type="text" id="drake-search-input" oninput="filterDrakeFields()" placeholder="Filter Drake fields (e.g. First Name, SSN, Address)..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none bg-slate-50/50">
-          </div>
-        </div>
-
-        <!-- Target Fields Container -->
-        <div id="drake-fields-container" class="p-3 overflow-y-auto custom-scrollbar flex-1 space-y-3">
-          <div class="text-center py-16 text-slate-400 text-xs">Loading Drake fields...</div>
-        </div>
-
-      </div>
-
-    </div>
-
-  </main>
-
-  <!-- ========================================================================= -->
-  <!-- SETTINGS MODAL (Secondary actions & API Config moved here)                -->
-  <!-- ========================================================================= -->
-  <div id="settings-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 space-y-4">
-      
-      <div class="flex items-center justify-between border-b pb-3">
-        <div class="flex items-center gap-2.5">
-          <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-sm font-bold">
-            <i class="fa-solid fa-gear"></i>
-          </span>
-          <h3 class="font-bold text-sm text-slate-900">Settings & Configuration</h3>
-        </div>
-        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-700 text-lg px-2">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <!-- Config Form -->
-      <div class="space-y-3 text-xs max-h-96 overflow-y-auto pr-1">
-        <div>
-          <label class="block font-semibold text-slate-600 mb-1">Zoho Domain</label>
-          <input type="text" id="cfg-domain" value="creator.zoho.in" class="w-full px-3 py-2 border rounded-lg bg-slate-50 text-slate-800">
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block font-semibold text-slate-600 mb-1">Owner Name</label>
-            <input type="text" id="cfg-owner" value="zentegraindia" class="w-full px-3 py-2 border rounded-lg bg-slate-50 text-slate-800">
-          </div>
-          <div>
-            <label class="block font-semibold text-slate-600 mb-1">App Name</label>
-            <input type="text" id="cfg-app" value="drake-automation" class="w-full px-3 py-2 border rounded-lg bg-slate-50 text-slate-800">
-          </div>
-        </div>
-        <div>
-          <label class="block font-semibold text-slate-600 mb-1">Default Report Name</label>
-          <input type="text" id="cfg-report" value="All_Personal_Infos" class="w-full px-3 py-2 border rounded-lg bg-slate-50 text-slate-800">
-        </div>
-        
-        <div class="border-t pt-3 space-y-2">
-          <span class="font-bold text-slate-700 block">Automated Software Navigation (Zero Alt+Tab):</span>
-          <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2 text-xs">
-            <div class="flex items-center justify-between">
-              <span class="text-slate-600 font-medium">Auto-Navigation Engine:</span>
-              <span class="inline-flex items-center gap-1 text-emerald-600 font-bold">
-                <i class="fa-solid fa-circle-check"></i> Enabled (Zero Alt+Tab)
-              </span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-slate-600 font-medium">Drake Focus Controller:</span>
-              <span class="text-blue-700 font-semibold" id="nav-drake-status">Ready</span>
-            </div>
-            <div class="flex gap-2 pt-1">
-              <button onclick="testAppSwitch('drake')" class="flex-1 py-1.5 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded font-semibold transition">
-                <i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Focus Drake Now
-              </button>
-              <button onclick="testAppSwitch('browser')" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded font-semibold transition">
-                <i class="fa-solid fa-window-maximize mr-1"></i> Focus Browser Now
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="border-t pt-3 space-y-2">
-          <span class="font-bold text-slate-700 block">Mapping Tools:</span>
-          <div class="flex gap-2">
-            <button onclick="exportMappingsJSON()" class="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition">
-              <i class="fa-solid fa-download mr-1"></i> Export JSON
-            </button>
-            <button onclick="resetToDefaultMappings()" class="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition">
-              <i class="fa-solid fa-rotate-left mr-1"></i> Reset to Defaults
-            </button>
-            <button onclick="clearAllMappings()" class="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 font-semibold hover:bg-red-50 transition">
-              <i class="fa-solid fa-trash mr-1"></i> Clear All
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="pt-3 border-t flex justify-end gap-2">
-        <button onclick="closeSettingsModal()" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-semibold text-xs hover:bg-slate-50">
-          Close
-        </button>
-        <button onclick="saveSettingsConfig()" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm">
-          Save Settings
-        </button>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- JAVASCRIPT LOGIC -->
-  <script>
-    // Dynamic URL Parameter Parsing (Supports mode=creator, type=dependent, record_id=input.ID)
-    const urlParams = new URLSearchParams(window.location.search);
-    let currentModuleType = (urlParams.get('type') || 'personal').toLowerCase().trim();
-    const currentMode = urlParams.get('mode') || 'creator';
-    const currentRecordId = urlParams.get('record_id') || '';
-
-    let currentActiveForm = 'Personal_Info';
-    let currentDrakeScreen = 'Screen 1';
-    let currentFlattenedFields = [];
-    let currentDrakeFields = [];
-    let activeMappings = {}; // { zoho_key: drake_id }
-    let selectedMetaField = null;
-
-    // Initialization
-    document.addEventListener('DOMContentLoaded', () => {
-      fetchAllMetaAndDrakeFields();
-    });
-
-    async function fetchAllMetaAndDrakeFields() {
-      try {
-        // 1. Resolve module metadata dynamically based on 'type' parameter
-        const modResp = await fetch(`/api/module/info?type=${encodeURIComponent(currentModuleType)}`);
-        const modRes = await modResp.json();
-        if (modRes.success && modRes.module) {
-          currentActiveForm = modRes.module.form_link_name;
-          currentModuleType = modRes.module.type;
-          currentDrakeScreen = modRes.module.drake_screen;
-          const screenTitle = document.getElementById('drake-screen-title');
-          if (screenTitle) {
-            screenTitle.textContent = `Drake Tax Target Fields (${currentDrakeScreen})`;
-          }
-        }
-
-        // 2. Load all forms into selector
-        await loadMetaForms();
-
-        // 3. Load fields & mappings dynamically for this module
-        await loadMetaFieldsForForm(currentActiveForm, currentModuleType);
-        await loadDrakeFields(currentModuleType);
-        await loadSavedMappings(currentModuleType);
-
-        // 4. Automatically match compatible fields by default (Value / Name Matching)
-        autoMatchFields(false);
-
-        renderMetaFields();
-        renderDrakeFields();
-        updateMappingStats();
-
-        // 5. If record_id is passed, fetch record info
-        if (currentRecordId) {
-          showBuildNotification(
-            `Module Ready: ${modRes.module ? modRes.module.display_name : currentModuleType.toUpperCase()}`,
-            `Connected for Record ID: ${currentRecordId}. Click "Insert into Drake" to populate directly.`,
-            'info'
-          );
-        }
-      } catch (err) {
-        console.error('Fetch error:', err);
-        showBuildNotification('Connection Error', err.message, 'error');
-      }
-    }
-
-    async function loadMetaForms() {
-      try {
-        const resp = await fetch('/api/meta/forms');
-        const res = await resp.json();
-        if (res.success && res.forms) {
-          const select = document.getElementById('form-select');
-          if (select) {
-            select.innerHTML = '';
-            res.forms.forEach(f => {
-              const opt = document.createElement('option');
-              opt.value = f.link_name;
-              opt.setAttribute('data-module-type', f.module_type || 'personal');
-              opt.textContent = `${f.display_name} (${f.link_name})`;
-              if (f.link_name === currentActiveForm || (f.module_type && f.module_type === currentModuleType)) {
-                opt.selected = true;
-                currentActiveForm = f.link_name;
-              }
-              select.appendChild(opt);
-            });
-          }
-        }
-      } catch (e) { console.warn(e); }
-    }
-
-    async function loadMetaFieldsForForm(formName, moduleType) {
-      const typeParam = moduleType ? `&type=${encodeURIComponent(moduleType)}` : '';
-      const resp = await fetch(`/api/meta/fields?form=${encodeURIComponent(formName)}${typeParam}`);
-      const res = await resp.json();
-      if (!res.success) throw new Error(res.error || 'Failed to load form fields');
-      currentActiveForm = formName;
-      currentFlattenedFields = res.flattened_fields || res.raw_fields || [];
-      document.getElementById('meta-fields-badge').textContent = `${currentFlattenedFields.length} Fields`;
-    }
-
-    async function loadDrakeFields(moduleType) {
-      const resp = await fetch(`/api/drake/fields?type=${encodeURIComponent(moduleType || currentModuleType)}`);
-      const res = await resp.json();
-      if (!res.success) throw new Error(res.error || 'Failed to load Drake fields');
-      currentDrakeFields = res.fields || [];
-      if (res.module && res.module.drake_screen) {
-        currentDrakeScreen = res.module.drake_screen;
-        const screenTitle = document.getElementById('drake-screen-title');
-        if (screenTitle) {
-          screenTitle.textContent = `Drake Tax Target Fields (${currentDrakeScreen})`;
-        }
-      }
-      document.getElementById('drake-fields-badge').textContent = `${currentDrakeFields.length} Fields`;
-      document.getElementById('stat-drake-total').textContent = currentDrakeFields.length;
-    }
-
-    async function loadSavedMappings(moduleType) {
-      try {
-        const resp = await fetch(`/api/field-mapping?type=${encodeURIComponent(moduleType || currentModuleType)}`);
-        const res = await resp.json();
-        if (res.success && res.mappings) {
-          activeMappings = res.mappings;
-        }
-      } catch (e) {}
-    }
-
-    // =========================================================================
-    // PRIMARY ACTION: INSERT INTO DRAKE & STOP AUTOMATION
-    // =========================================================================
-    let drakeAbortController = null;
-
-    async function executeInsertIntoDrake() {
-      const recordId = currentRecordId || (currentModuleType === 'dependent' ? '266830000014776584' : '266830000014689319');
-      const btn = document.getElementById('btn-insert-drake');
-      const stopBtn = document.getElementById('btn-stop-drake');
-      const orig = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Inserting into Drake...';
-
-      if (stopBtn) {
-        stopBtn.classList.remove('hidden');
-        stopBtn.disabled = false;
-        stopBtn.innerHTML = '<i class="fa-solid fa-circle-stop text-sm"></i><span>Stop Automation</span>';
-      }
-
-      showBuildNotification('Inserting Data into Drake...', `Automating navigation to Drake Tax 2025 for ${currentDrakeScreen} (Zero manual Alt+Tab)...`, 'info');
-
-      drakeAbortController = new AbortController();
-
-      try {
-        const resp = await fetch('/api/field-mapping/insert-into-drake', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: drakeAbortController.signal,
-          body: JSON.stringify({
-            type: currentModuleType,
-            record_id: recordId,
-            mappings: activeMappings
-          })
-        });
-        const res = await resp.json();
-
-        if (res.success) {
-          showBuildNotification(
-            'Successfully Inserted into Drake Tax 2025!',
-            res.message || `Data populated into Drake Tax (${currentDrakeScreen}). Review on desktop.`,
-            'success'
-          );
-        } else if (res.status === 'STOPPED') {
-          showBuildNotification(
-            'Automation Stopped',
-            'Drake automation was safely stopped as requested.',
-            'warning'
-          );
-        } else {
-          showBuildNotification(
-            'Drake Insertion Notification',
-            res.error || res.message || 'Please ensure Drake 2025 is running on your desktop.',
-            'warning'
-          );
-        }
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          showBuildNotification('Automation Stopped', 'Drake automation request was cancelled from frontend.', 'warning');
-        } else {
-          showBuildNotification('Connection Error', 'Failed to reach Drake automation engine: ' + err, 'error');
-        }
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = orig;
-        if (stopBtn) {
-          stopBtn.classList.add('hidden');
-        }
-        drakeAbortController = null;
-      }
-    }
-
-    async function stopDrakeAutomation() {
-      const stopBtn = document.getElementById('btn-stop-drake');
-      if (stopBtn) {
-        stopBtn.disabled = true;
-        stopBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Stopping...';
-      }
-      showBuildNotification('Stopping Automation...', 'Sending stop signal to Drake Tax automation engine...', 'warning');
-
-      try {
-        await fetch('/api/automation/stop', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (e) {
-        console.error('Stop signal error:', e);
-      }
-
-      if (drakeAbortController) {
-        try { drakeAbortController.abort(); } catch (e) {}
-      }
-
-      setTimeout(() => {
-        if (stopBtn) {
-          stopBtn.disabled = false;
-          stopBtn.innerHTML = '<i class="fa-solid fa-circle-stop text-sm"></i><span>Stop Automation</span>';
-          stopBtn.classList.add('hidden');
-        }
-        const insertBtn = document.getElementById('btn-insert-drake');
-        if (insertBtn) {
-          insertBtn.disabled = false;
-        }
-      }, 600);
-    }
-
-    // =========================================================================
-    // IN-APP NOTIFICATION SECTION (REQUIREMENT 1)
-    // =========================================================================
-    function showBuildNotification(title, message, type = 'info') {
-      const container = document.getElementById('build-notification-container');
-      const box = document.getElementById('build-notification-box');
-      const icon = document.getElementById('build-notif-icon');
-      const titleEl = document.getElementById('build-notif-title');
-      const msgEl = document.getElementById('build-notif-message');
-      const notifBadge = document.getElementById('notif-badge');
-
-      if (!container || !box) return;
-
-      titleEl.textContent = title;
-      msgEl.textContent = message;
-
-      if (type === 'success') {
-        box.className = 'p-4 rounded-xl border bg-emerald-50 border-emerald-300 text-emerald-950 flex items-start justify-between gap-3 shadow-sm text-xs';
-        icon.className = 'w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm shrink-0 shadow';
-        icon.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
-      } else if (type === 'warning') {
-        box.className = 'p-4 rounded-xl border bg-amber-50 border-amber-300 text-amber-950 flex items-start justify-between gap-3 shadow-sm text-xs';
-        icon.className = 'w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center text-sm shrink-0 shadow';
-        icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
-      } else if (type === 'error') {
-        box.className = 'p-4 rounded-xl border bg-rose-50 border-rose-300 text-rose-950 flex items-start justify-between gap-3 shadow-sm text-xs';
-        icon.className = 'w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center text-sm shrink-0 shadow';
-        icon.innerHTML = '<i class="fa-solid fa-circle-xmark"></i>';
-      } else {
-        box.className = 'p-4 rounded-xl border bg-blue-50 border-blue-200 text-blue-950 flex items-start justify-between gap-3 shadow-sm text-xs';
-        icon.className = 'w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-sm shrink-0 shadow';
-        icon.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
-      }
-
-      container.classList.remove('hidden');
-      if (notifBadge) notifBadge.classList.remove('hidden');
-
-      // Scroll smoothly to notification if it's an important result
-      container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    function closeBuildNotification() {
-      const container = document.getElementById('build-notification-container');
-      if (container) container.classList.add('hidden');
-    }
-
-    function toggleNotificationPanel() {
-      const container = document.getElementById('build-notification-container');
-      if (container) {
-        container.classList.toggle('hidden');
-      }
-    }
-
-    // =========================================================================
-    // FIELD MAPPING LOGIC & RENDERING
-    // =========================================================================
-    function autoMatchFields(notifyUser = false) {
-      let matchCount = 0;
-      currentFlattenedFields.forEach(f => {
-        // Skip table container itself
-        if (f.type === 21 && !f.parent_subform) return;
-
-        const effectiveKey = f.full_link_name || f.link_name;
-        const bareKey = f.link_name;
-        const disp = (f.display_label || f.display_name || '').toLowerCase();
-        const keyLow = effectiveKey.toLowerCase();
-        const bareLow = (bareKey || '').toLowerCase();
-
-        // If already mapped in activeMappings, ensure both keys are synced
-        const existingDrakeId = activeMappings[effectiveKey] || (bareKey && activeMappings[bareKey]);
-        if (existingDrakeId) {
-          activeMappings[effectiveKey] = existingDrakeId;
-          if (bareKey) activeMappings[bareKey] = existingDrakeId;
-          return;
-        }
-
-        let matchedDrakeId = null;
-
-        // 1. Module-specific semantic matching
-        if (currentModuleType === 'dependent' || keyLow.includes('dependent')) {
-          if (keyLow.includes('name') || disp.includes('name') || bareLow.includes('name')) {
-            matchedDrakeId = 'dependent.first_name';
-          } else if (keyLow.includes('ssn') || keyLow.includes('itin') || disp.includes('security') || disp.includes('itin') || bareLow.includes('ssn') || bareLow.includes('itin')) {
-            matchedDrakeId = 'dependent.ssn';
-          } else if (keyLow.includes('dob') || keyLow.includes('birth') || disp.includes('birth') || bareLow.includes('dob')) {
-            matchedDrakeId = 'dependent.dob';
-          } else if (keyLow.includes('relat') || disp.includes('relat') || bareLow.includes('relat')) {
-            matchedDrakeId = 'dependent.relationship';
-          } else if (keyLow.includes('month') || keyLow.includes('mos') || disp.includes('home') || disp.includes('month') || bareLow.includes('mos')) {
-            matchedDrakeId = 'dependent.months_in_home';
-          } else if (keyLow.includes('notes') || disp.includes('notes') || bareLow.includes('notes')) {
-            matchedDrakeId = 'notes_to_preparer';
-          }
-        } else if (currentModuleType === 'personal' || !keyLow.includes('dependent')) {
-          // Primary Taxpayer
-          if (keyLow.includes('filing_status') || disp.includes('filing status')) {
-            matchedDrakeId = 'taxpayer.filing_status';
-          } else if (keyLow.includes('taxpayer_first') || (disp.includes('first name') && !disp.includes('spouse'))) {
-            matchedDrakeId = 'taxpayer.first_name';
-          } else if (keyLow.includes('taxpayer_middle') || (disp.includes('middle') && !disp.includes('spouse'))) {
-            matchedDrakeId = 'taxpayer.mi';
-          } else if (keyLow.includes('taxpayer_last') || (disp.includes('last name') && !disp.includes('spouse'))) {
-            matchedDrakeId = 'taxpayer.last_name';
-          } else if (keyLow.includes('taxpayer_ssn') || (disp.includes('ssn') && !disp.includes('spouse'))) {
-            matchedDrakeId = 'taxpayer.ssn';
-          } else if (keyLow.includes('taxpayer_dob') || (disp.includes('date of birth') && !disp.includes('spouse'))) {
-            matchedDrakeId = 'taxpayer.dob';
-          } else if (keyLow.includes('taxpayer_occup') || (disp.includes('occupation') && !disp.includes('spouse'))) {
-            matchedDrakeId = 'taxpayer.occupation';
-          } else if (keyLow.includes('taxpayer_main_phone') || (disp.includes('daytime') || disp.includes('main phone'))) {
-            matchedDrakeId = 'taxpayer.phone';
-          } else if (keyLow.includes('taxpayer_other_phone') || disp.includes('other phone') || disp.includes('cell')) {
-            matchedDrakeId = 'taxpayer.other_phone';
-          } else if (keyLow.includes('taxpayer_email') || (disp.includes('email') && !disp.includes('spouse'))) {
-            matchedDrakeId = 'taxpayer.email';
-          }
-          // Spouse
-          else if (keyLow.includes('spouse_first') || (disp.includes('first name') && disp.includes('spouse'))) {
-            matchedDrakeId = 'spouse.first_name';
-          } else if (keyLow.includes('spouse_middle') || (disp.includes('middle') && disp.includes('spouse'))) {
-            matchedDrakeId = 'spouse.mi';
-          } else if (keyLow.includes('spouse_last') || (disp.includes('last name') && disp.includes('spouse'))) {
-            matchedDrakeId = 'spouse.last_name';
-          } else if (keyLow.includes('spouse_ssn') || (disp.includes('ssn') && disp.includes('spouse'))) {
-            matchedDrakeId = 'spouse.ssn';
-          } else if (keyLow.includes('spouse_dob') || (disp.includes('date of birth') && disp.includes('spouse'))) {
-            matchedDrakeId = 'spouse.dob';
-          } else if (keyLow.includes('spouse_occup') || (disp.includes('occupation') && disp.includes('spouse'))) {
-            matchedDrakeId = 'spouse.occupation';
-          } else if (keyLow.includes('spouse_main_phone') || (disp.includes('phone') && disp.includes('spouse'))) {
-            matchedDrakeId = 'spouse.phone';
-          } else if (keyLow.includes('spouse_other_phone')) {
-            matchedDrakeId = 'spouse.other_phone';
-          } else if (keyLow.includes('spouse_email') || (disp.includes('email') && disp.includes('spouse'))) {
-            matchedDrakeId = 'spouse.email';
-          }
-          // Address
-          else if (keyLow.includes('mailing_address') || keyLow.includes('street') || disp.includes('street') || disp.includes('address')) {
-            matchedDrakeId = 'address.street';
-          } else if (keyLow === 'city' || disp === 'city' || bareLow === 'city') {
-            matchedDrakeId = 'address.city';
-          } else if (keyLow.includes('state') || disp.includes('state') || bareLow.includes('state')) {
-            matchedDrakeId = 'address.state';
-          } else if (keyLow.includes('zip') || disp.includes('zip') || bareLow.includes('zip')) {
-            matchedDrakeId = 'address.zip';
-          }
-          // Bank
-          else if (keyLow.includes('bank_name') || disp.includes('bank name')) {
-            matchedDrakeId = 'bank.bank_name';
-          } else if (keyLow.includes('account_type') || disp.includes('account type')) {
-            matchedDrakeId = 'bank.account_type';
-          } else if (keyLow.includes('routing') || disp.includes('routing')) {
-            matchedDrakeId = 'bank.routing';
-          } else if (keyLow.includes('account_number') || disp.includes('account number')) {
-            matchedDrakeId = 'bank.account_number';
-          }
-          // Residency
-          else if (keyLow.includes('residential_status') || disp.includes('residential')) {
-            matchedDrakeId = 'residency.residential_status';
-          } else if (keyLow.includes('2025')) {
-            matchedDrakeId = 'residency.days_2025';
-          } else if (keyLow.includes('2024')) {
-            matchedDrakeId = 'residency.days_2024';
-          } else if (keyLow.includes('2023')) {
-            matchedDrakeId = 'residency.days_2023';
-          }
-        }
-
-        // 2. Generic fallback matching against current Drake field labels and ids
-        if (!matchedDrakeId) {
-          for (const df of currentDrakeFields) {
-            const dLabel = df.label.toLowerCase();
-            const dId = df.id.toLowerCase();
-            if (disp === dLabel || bareLow === dId.split('.').pop()) {
-              matchedDrakeId = df.id;
-              break;
-            }
-          }
-        }
-
-        if (matchedDrakeId) {
-          activeMappings[effectiveKey] = matchedDrakeId;
-          if (bareKey) activeMappings[bareKey] = matchedDrakeId;
-          matchCount++;
-        }
-      });
-
-      if (notifyUser && matchCount > 0) {
-        showBuildNotification('Auto-Map Complete', `Matched ${matchCount} fields using value & semantic matching! You can adjust mappings manually if needed.`, 'success');
-      }
-    }
-
-    function renderMetaFields() {
-      const container = document.getElementById('meta-fields-container');
-      if (!container) return;
-
-      const searchTerm = (document.getElementById('meta-search-input')?.value || '').toLowerCase().trim();
-
-      const filtered = currentFlattenedFields.filter(f => {
-        const name = (f.display_label || f.display_name || '').toLowerCase();
-        const key = (f.full_link_name || f.link_name || '').toLowerCase();
-        return !searchTerm || name.includes(searchTerm) || key.includes(searchTerm);
-      });
-
-      if (filtered.length === 0) {
-        container.innerHTML = '<div class="text-center py-12 text-slate-400 text-xs">No fields match filter.</div>';
-        return;
-      }
-
-      container.innerHTML = '';
-      filtered.forEach(f => {
-        // Render subform table container as a clean section banner
-        if (f.type === 21 && !f.parent_subform) {
-          const header = document.createElement('div');
-          header.className = 'mt-2 mb-1 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 flex items-center justify-between shadow-xs';
-          header.innerHTML = `
-            <span class="flex items-center gap-1.5">
-              <i class="fa-solid fa-table-cells-large text-blue-600"></i> ${f.display_name || f.link_name}
-            </span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-200/70 text-blue-900">SubForm Table</span>
-          `;
-          container.appendChild(header);
-          return;
-        }
-
-        const effectiveKey = f.full_link_name || f.link_name;
-        const bareKey = f.link_name;
-        const mappedDrakeId = activeMappings[effectiveKey] || (bareKey ? activeMappings[bareKey] : null);
-        const isMapped = Boolean(mappedDrakeId);
-        if (isMapped && !activeMappings[effectiveKey]) {
-          activeMappings[effectiveKey] = mappedDrakeId;
-        }
-
-        const mappedDrakeField = isMapped ? currentDrakeFields.find(d => d.id === mappedDrakeId) : null;
-        const isSelected = selectedMetaField && (selectedMetaField.full_link_name || selectedMetaField.link_name) === effectiveKey;
-
-        const card = document.createElement('div');
-        card.onclick = () => onSelectMetaField(f);
-        card.className = `p-2.5 rounded-lg border transition cursor-pointer text-xs flex flex-col gap-1 ${
-          isSelected 
-            ? 'card-selected' 
-            : isMapped 
-              ? 'bg-emerald-50/40 border-emerald-300 hover:border-emerald-400' 
-              : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50'
-        }`;
-
-        card.innerHTML = `
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-bold text-slate-800 truncate text-xs">
-              ${f.display_label || f.display_name || effectiveKey}
-            </span>
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 shrink-0">
-              ${f.type === 10 ? 'Date' : (f.type === 21 ? 'SubForm' : 'Field')}
-            </span>
-          </div>
-
-          <div class="flex items-center justify-between gap-2 text-[11px]">
-            <span class="font-mono text-slate-400 text-[10px] truncate max-w-[180px]">${effectiveKey}</span>
-            ${isMapped 
-              ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 shrink-0">
-                   <i class="fa-solid fa-check text-[9px]"></i>
-                   <span class="truncate max-w-[140px]">${mappedDrakeField?.label || mappedDrakeId}</span>
-                   <button onclick="unmapMetaField('${effectiveKey}', event)" title="Remove mapping" class="hover:text-red-600 ml-0.5 text-slate-400 font-bold">&times;</button>
-                 </span>`
-              : `<span class="text-slate-400 text-[10px] italic">Unmapped</span>`
-            }
-          </div>
-        `;
-
-        container.appendChild(card);
-      });
-    }
-
-    function renderDrakeFields() {
-      const container = document.getElementById('drake-fields-container');
-      if (!container) return;
-
-      const searchTerm = (document.getElementById('drake-search-input')?.value || '').toLowerCase().trim();
-
-      const drakeToZoho = {};
-      for (const [zKey, dId] of Object.entries(activeMappings)) {
-        // Prioritize clean display of mapped Zoho field
-        if (!drakeToZoho[dId] || zKey.includes('.')) {
-          drakeToZoho[dId] = zKey;
-        }
-      }
-
-      const grouped = {};
-      currentDrakeFields.forEach(f => {
-        const matches = !searchTerm || f.label.toLowerCase().includes(searchTerm) || f.id.toLowerCase().includes(searchTerm) || f.section.toLowerCase().includes(searchTerm);
-        if (!matches) return;
-        if (!grouped[f.section]) grouped[f.section] = [];
-        grouped[f.section].push(f);
-      });
-
-      const sectionKeys = Object.keys(grouped);
-      if (sectionKeys.length === 0) {
-        container.innerHTML = '<div class="text-center py-12 text-slate-400 text-xs">No Drake fields match filter.</div>';
-        return;
-      }
-
-      container.innerHTML = '';
-      sectionKeys.forEach(secName => {
-        const secDiv = document.createElement('div');
-        secDiv.className = 'space-y-1.5';
-
-        const screenName = grouped[secName][0]?.screen || currentDrakeScreen || 'Screen 1';
-        secDiv.innerHTML = `
-          <div class="flex items-center justify-between border-b border-slate-100 pb-1">
-            <span class="font-bold text-xs text-slate-800">${secName}</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600">${screenName}</span>
-          </div>
-          <div class="space-y-1.5 pl-1" id="sec-fields-${secName.replace(/[^a-zA-Z0-9_]/g, '_')}"></div>
-        `;
-
-        const secFieldsContainer = secDiv.querySelector(`#sec-fields-${secName.replace(/[^a-zA-Z0-9_]/g, '_')}`);
-
-        grouped[secName].forEach(f => {
-          const mappedZohoKey = drakeToZoho[f.id];
-          const isMapped = Boolean(mappedZohoKey);
-
-          // Get clean display name for mapped Zoho field
-          let mappedZohoDisplay = mappedZohoKey || '';
-          if (isMapped) {
-            const foundMeta = currentFlattenedFields.find(m => (m.full_link_name || m.link_name) === mappedZohoKey || m.link_name === mappedZohoKey);
-            if (foundMeta) {
-              mappedZohoDisplay = foundMeta.display_label || foundMeta.display_name || mappedZohoKey;
-            }
-          }
-
-          const card = document.createElement('div');
-          card.onclick = () => onSelectDrakeField(f);
-          card.className = `p-2.5 rounded-lg border transition cursor-pointer text-xs flex flex-col gap-1 ${
-            isMapped 
-              ? 'bg-emerald-50/40 border-emerald-300 hover:border-emerald-500' 
-              : selectedMetaField 
-                ? 'bg-white border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50/30' 
-                : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-slate-50'
-          }`;
-
-          card.innerHTML = `
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-bold text-slate-900 truncate text-xs">
-                ${f.label} ${f.required ? '<span class="text-red-500">*</span>' : ''}
-              </span>
-              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 shrink-0">
-                ${f.type}
-              </span>
-            </div>
-
-            <div class="flex items-center justify-between gap-2 text-[11px]">
-              <span class="font-mono text-slate-400 text-[10px] truncate max-w-[150px]">${f.id}</span>
-              ${isMapped 
-                ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 shrink-0">
-                     <i class="fa-solid fa-check text-[9px]"></i>
-                     <span class="truncate max-w-[140px]">${mappedZohoDisplay}</span>
-                     <button onclick="unmapDrakeField('${f.id}', event)" title="Remove mapping" class="hover:text-red-600 ml-1 text-slate-400 font-bold">&times;</button>
-                   </span>`
-                : selectedMetaField 
-                  ? `<span class="text-blue-600 font-bold text-[10px] animate-pulse">+ Click to map</span>`
-                  : `<span class="text-slate-400 text-[10px] italic">Unassigned</span>`
-              }
-            </div>
-          `;
-
-          secFieldsContainer.appendChild(card);
-        });
-
-        container.appendChild(secDiv);
-      });
-    }
-
-    function onSelectMetaField(field) {
-      if (field.type === 21 && !field.parent_subform) return;
-      const key = field.full_link_name || field.link_name;
-      if (selectedMetaField && (selectedMetaField.full_link_name || selectedMetaField.link_name) === key) {
-        selectedMetaField = null;
-        updateSelectionHelper(null);
-      } else {
-        selectedMetaField = field;
-        updateSelectionHelper(field);
-      }
-      renderMetaFields();
-      renderDrakeFields();
-    }
-
-    function onSelectDrakeField(drakeField) {
-      if (selectedMetaField) {
-        const metaKey = selectedMetaField.full_link_name || selectedMetaField.link_name;
-        const bareKey = selectedMetaField.link_name;
-        
-        // Remove existing mapping for this Drake field if any
-        for (const [k, d] of Object.entries(activeMappings)) {
-          if (d === drakeField.id) delete activeMappings[k];
-        }
-
-        activeMappings[metaKey] = drakeField.id;
-        if (bareKey) activeMappings[bareKey] = drakeField.id;
-
-        const label = selectedMetaField.display_label || selectedMetaField.display_name || metaKey;
-        selectedMetaField = null;
-        updateSelectionHelper(null);
-        renderMetaFields();
-        renderDrakeFields();
-        updateMappingStats();
-        showBuildNotification('Field Connected', `Mapped ${label} &rarr; ${drakeField.label}`, 'info');
-      }
-    }
-
-    function unmapMetaField(key, evt) {
-      if (evt) evt.stopPropagation();
-      delete activeMappings[key];
-      if (key.includes('.')) {
-        delete activeMappings[key.split('.').pop()];
-      }
-      renderMetaFields();
-      renderDrakeFields();
-      updateMappingStats();
-    }
-
-    function unmapDrakeField(drakeId, evt) {
-      if (evt) evt.stopPropagation();
-      for (const [k, d] of Object.entries(activeMappings)) {
-        if (d === drakeId) delete activeMappings[k];
-      }
-      renderMetaFields();
-      renderDrakeFields();
-      updateMappingStats();
-    }
-
-    function updateSelectionHelper(field) {
-      const banner = document.getElementById('selection-helper-banner');
-      const text = document.getElementById('selection-helper-text');
-      if (!banner || !text) return;
-      if (field) {
-        banner.className = 'flex-1 text-center px-3 py-1.5 bg-blue-100 border border-blue-300 rounded-lg text-xs font-bold text-blue-900 animate-pulse';
-        text.innerHTML = `Selected: <strong>${field.display_label || field.display_name}</strong>. Click a Drake field to complete.`;
-      } else {
-        banner.className = 'flex-1 text-center px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-200 text-xs font-medium text-slate-600';
-        text.textContent = 'Click a Meta field on the left → then click a Drake field on the right to connect.';
-      }
-    }
-
-    function updateMappingStats() {
-      const total = currentDrakeFields.length || 41;
-      const mapped = new Set(Object.values(activeMappings)).size;
-      const pct = Math.round((mapped / total) * 100);
-      document.getElementById('stat-mapped-count').textContent = mapped;
-      document.getElementById('stat-percentage-text').textContent = `${pct}% Complete`;
-      document.getElementById('stat-progress-bar').style.width = `${pct}%`;
-    }
-
-    function filterMetaFields() { renderMetaFields(); }
-    function filterDrakeFields() { renderDrakeFields(); }
-
-    async function onFormSelected() {
-      const select = document.getElementById('form-select');
-      currentActiveForm = select.value;
-      const opt = select.options[select.selectedIndex];
-      if (opt && opt.getAttribute('data-module-type')) {
-        currentModuleType = opt.getAttribute('data-module-type');
-      } else {
-        const modResp = await fetch(`/api/module/info?type=${encodeURIComponent(currentActiveForm)}`);
-        const modRes = await modResp.json();
-        if (modRes.success && modRes.module) {
-          currentModuleType = modRes.module.type;
-        }
-      }
-
-      await loadMetaFieldsForForm(currentActiveForm, currentModuleType);
-      await loadDrakeFields(currentModuleType);
-      await loadSavedMappings(currentModuleType);
-
-      // Value & semantic auto-matching on module switch
-      autoMatchFields(false);
-
-      renderMetaFields();
-      renderDrakeFields();
-      updateMappingStats();
-
-      showBuildNotification('Module Switched', `Active module is now ${currentModuleType.toUpperCase()} (${currentDrakeScreen})`, 'info');
-    }
-
-    async function autoSuggestMappings() {
-      try {
-        autoMatchFields(true);
-        renderMetaFields();
-        renderDrakeFields();
-        updateMappingStats();
-      } catch (e) {
-        showBuildNotification('Error', 'Auto-map failed: ' + e, 'error');
-      }
-    }
-
-    async function saveFieldMappings() {
-      const btn = document.getElementById('btn-save-mappings');
-      const orig = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
-
-      try {
-        const resp = await fetch('/api/field-mapping', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: currentModuleType, mappings: activeMappings })
-        });
-        const res = await resp.json();
-        if (res.success) {
-          showBuildNotification('Field Mappings Saved', `Saved mappings for ${currentModuleType.toUpperCase()} successfully!`, 'success');
-        } else {
-          showBuildNotification('Save Error', res.error, 'error');
-        }
-      } catch (e) {
-        showBuildNotification('Network Error', e.message, 'error');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = orig;
-      }
-    }
-
-    // Automated Software Navigation Test
-    async function testAppSwitch(target) {
-      try {
-        const resp = await fetch('/api/navigator/switch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ app: target })
-        });
-        const res = await resp.json();
-        if (res.success) {
-          showBuildNotification('Navigation Switched', `Switched active window to ${target.toUpperCase()} successfully without Alt+Tab!`, 'success');
-        } else {
-          showBuildNotification('Navigation Error', res.error || 'Failed to switch window.', 'warning');
-        }
-      } catch (e) {
-        showBuildNotification('Error', 'Failed to communicate with navigator: ' + e, 'error');
-      }
-    }
-
-    async function checkNavStatus() {
-      try {
-        const resp = await fetch('/api/navigator/status');
-        const res = await resp.json();
-        if (res.success) {
-          const dStat = document.getElementById('nav-drake-status');
-          if (dStat) {
-            dStat.textContent = res.drake.detected ? `Connected (${res.drake.title.substring(0, 24)}...)` : 'Not Detected';
-          }
-        }
-      } catch (e) {}
-    }
-
-    // Settings Modal
-    function openSettingsModal() {
-      document.getElementById('settings-modal').classList.remove('hidden');
-      checkNavStatus();
-    }
-    function closeSettingsModal() { document.getElementById('settings-modal').classList.add('hidden'); }
-
-    function exportMappingsJSON() {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activeMappings, null, 2));
-      const a = document.createElement('a');
-      a.href = dataStr;
-      a.download = `drake_field_mappings_${Date.now()}.json`;
-      a.click();
-    }
-
-    async function resetToDefaultMappings() {
-      if (!confirm('Reset mappings to defaults?')) return;
-      try {
-        const resp = await fetch('/api/field-mapping/defaults');
-        const res = await resp.json();
-        if (res.success) {
-          activeMappings = res.mappings;
-          renderMetaFields();
-          renderDrakeFields();
-          updateMappingStats();
-          showBuildNotification('Reset Complete', 'Field mappings reset to defaults.', 'info');
-          closeSettingsModal();
-        }
-      } catch (e) {}
-    }
-
-    function clearAllMappings() {
-      if (!confirm('Clear all mappings?')) return;
-      activeMappings = {};
-      renderMetaFields();
-      renderDrakeFields();
-      updateMappingStats();
-      showBuildNotification('Cleared', 'All mappings cleared.', 'info');
-    }
-
-    async function saveSettingsConfig() {
-      showBuildNotification('Settings Updated', 'Zoho Creator API settings saved.', 'success');
-      closeSettingsModal();
-    }
-  </script>
-</body>
-</html>
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>NMG Drake Automation - Multi-Module Tax Packet & Field Mapping</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+
+    tailwind.config = {
+
+      theme: {
+
+        extend: {
+
+          fontFamily: {
+
+            sans: ['Inter', 'sans-serif'],
+
+            mono: ['JetBrains Mono', 'monospace'],
+
+          }
+
+        }
+
+      }
+
+    }
+
+  </script>
+
+  <style>
+
+    .card-selected {
+
+      border-color: #2563eb !important;
+
+      background-color: #eff6ff !important;
+
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2) !important;
+
+      transform: translateY(-1px);
+
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+
+      width: 6px;
+
+      height: 6px;
+
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+
+      background: #f1f5f9;
+
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+
+      background: #cbd5e1;
+
+      border-radius: 4px;
+
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+
+      background: #94a3b8;
+
+    }
+
+  </style>
+
+</head>
+
+<body class="bg-slate-50 min-h-screen text-slate-800 font-sans flex flex-col">
+
+
+
+  <!-- ========================================================================= -->
+
+  <!-- TOP NAVIGATION HEADER WITH NMG BRAND & WORKFLOW SELECTOR                  -->
+
+  <!-- ========================================================================= -->
+
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+
+    <div class="max-w-[1800px] mx-auto px-6 py-2.5 flex items-center justify-between gap-4">
+
+      
+
+      <!-- NMG Brand Logo -->
+
+      <div class="flex items-center gap-3">
+
+        <img src="/static/nmg_logo.png" alt="NMG Logo" class="h-10 object-contain" onerror="this.style.display='none'">
+
+        <div class="border-l border-slate-300 pl-3">
+
+          <span class="text-sm font-bold text-slate-900 tracking-tight block">Drake Tax 2025 Automation</span>
+
+          <span class="text-[11px] text-slate-500 block -mt-0.5">TaxFlow AI &bull; Smart Multi-Module Processing</span>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- WORKFLOW SELECTOR (ONLY PDF & ZOHO FIELD MAPPING) -->
+
+      <div class="flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+
+        <button id="nav-mode-pdf" onclick="switchMasterMode('pdf')" class="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs transition bg-white text-blue-700 shadow border border-slate-200">
+
+          <i class="fa-solid fa-file-pdf text-red-500 text-sm"></i>
+
+          <span>1. PDF Tax Packet Extractor</span>
+
+          <span id="badge-pdf-count" class="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-800 font-extrabold">Ready</span>
+
+        </button>
+
+        <button id="nav-mode-mapping" onclick="switchMasterMode('mapping')" class="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs transition text-slate-600 hover:text-slate-900">
+
+          <i class="fa-solid fa-diagram-project text-indigo-500 text-sm"></i>
+
+          <span>2. Zoho Field Mapping</span>
+
+          <span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 text-slate-700 font-extrabold">Meta API</span>
+
+        </button>
+
+      </div>
+
+
+
+    </div>
+
+  </header>
+
+
+
+  <!-- ========================================================================= -->
+
+  <!-- BUILD APP NOTIFICATIONS BAR                                               -->
+
+  <!-- ========================================================================= -->
+
+  <div id="build-notification-container" class="max-w-[1800px] mx-auto px-6 pt-3 w-full hidden">
+
+    <div id="build-notification-box" class="p-3.5 rounded-xl border flex items-start justify-between gap-3 shadow-sm transition-all text-xs">
+
+      <div class="flex items-start gap-3">
+
+        <div id="build-notif-icon" class="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0">
+
+          <i class="fa-solid fa-circle-check"></i>
+
+        </div>
+
+        <div class="space-y-0.5">
+
+          <div id="build-notif-title" class="font-bold text-slate-900 text-xs">Notification Title</div>
+
+          <div id="build-notif-message" class="text-slate-600 text-[11px] leading-relaxed">Notification message text.</div>
+
+        </div>
+
+      </div>
+
+      <button onclick="closeBuildNotification()" class="text-slate-400 hover:text-slate-700 text-sm p-1">
+
+        <i class="fa-solid fa-xmark"></i>
+
+      </button>
+
+    </div>
+
+  </div>
+
+
+
+  <!-- ========================================================================= -->
+
+  <!-- MODULE 1: MULTI-PAGE PDF CLIENT TAX PACKET EXTRACTOR                      -->
+
+  <!-- ========================================================================= -->
+
+  <div id="view-pdf-mode" class="block flex-1">
+
+    
+
+    <!-- PDF UPLOAD & QUICK-LOAD VIEW (ONLY THIS IS VISIBLE INITIALLY) -->
+
+    <div id="pdf-upload-view" style="display: block;" class="max-w-4xl mx-auto px-6 py-12">
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-10 shadow-sm text-center">
+
+        <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-3xl shadow-sm">
+
+          <i class="fa-solid fa-file-pdf"></i>
+
+        </div>
+
+        <h2 class="text-2xl font-bold text-slate-900 mb-2">Multi-Page PDF Client Tax Packet Extractor</h2>
+
+        <p class="text-slate-500 text-sm max-w-xl mx-auto mb-8">
+
+          Upload any client PDF (e.g., 70-page tax organizer packets, W-2s, 1099s, mortgage interest). 
+
+          The AI extractor reads all pages, parses every schedule, and matches fields side-by-side with original document pages.
+
+        </p>
+
+
+
+        <!-- Drag & Drop Zone -->
+
+        <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 transition rounded-2xl p-10 cursor-pointer bg-slate-50/50 hover:bg-blue-50/30">
+
+          <input type="file" id="file-input" accept=".pdf" class="hidden">
+
+          <i class="fa-solid fa-cloud-arrow-up text-4xl text-slate-400 mb-3 block"></i>
+
+          <p class="text-sm font-semibold text-slate-700 mb-1">Drag & drop client PDF here, or <span class="text-blue-600 underline font-bold">browse from computer</span></p>
+
+          <p class="text-xs text-slate-400">Supports PDF packets up to 100MB (W-2, 1099-INT, 1099-DIV, 1099-R, 1098, 5498, 1099-B)</p>
+
+        </div>
+
+
+
+        <div class="mt-8 flex items-center justify-center gap-4">
+
+          <div class="h-px bg-slate-200 w-24"></div>
+
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Quick Sample Test</span>
+
+          <div class="h-px bg-slate-200 w-24"></div>
+
+        </div>
+
+
+
+        <button onclick="loadSampleTaxPacket()" class="mt-4 inline-flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-300 transition shadow-sm">
+
+          <i class="fa-solid fa-bolt text-amber-500"></i> Load Weaver-Cummings 2025 Tax Packet.pdf (70 Pages, 17 Forms)
+
+        </button>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- PDF LOADING SPINNER VIEW (HIDDEN INITIALLY) -->
+
+    <div id="pdf-loading-view" style="display: none;" class="max-w-xl mx-auto px-6 py-20 text-center">
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-12 shadow-sm">
+
+        <div class="inline-block animate-spin rounded-full h-14 w-14 border-4 border-blue-600 border-t-transparent mb-4"></div>
+
+        <h3 class="text-xl font-bold text-slate-800">Extracting All Tax Modules from PDF...</h3>
+
+        <p class="text-sm text-slate-500 mt-2 max-w-md mx-auto">
+
+          Reading 70 pages: Parsing W-2, SSA-1099, 1099-R pensions, 1099-INT interest, 1098 mortgages, 5498 IRAs, 1099-DIV dividends, and 1099-B capital gains.
+
+        </p>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- PDF INTERACTIVE MULTI-MODULE REVIEW WORKSPACE (HIDDEN INITIALLY) -->
+
+    <div id="pdf-review-view" style="display: none;" class="max-w-[1800px] mx-auto px-6 py-4 space-y-4">
+
+      
+
+      <!-- PACKET CLIENT HEADER BANNER -->
+
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+
+        <div class="flex items-center gap-4">
+
+          <div class="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center text-2xl shadow">
+
+            <i class="fa-solid fa-folder-open"></i>
+
+          </div>
+
+          <div>
+
+            <div class="flex items-center gap-2.5">
+
+              <h2 id="client-name-display" class="text-lg font-bold text-slate-900 leading-tight">ZARA OSEI WEAVER-CUMMINGS</h2>
+
+              <span id="client-ssn-badge" class="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">SSN: ***-**-3842</span>
+
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Tax Year 2025</span>
+
+            </div>
+
+            <p id="packet-meta-subtitle" class="text-xs text-slate-500 mt-0.5">
+
+              Document: <span id="doc-filename-display" class="font-semibold text-slate-700">Weaver-Cummings_2025_Tax_Packet.pdf</span> &bull; 
+
+              <span id="total-pages-display" class="font-semibold text-slate-700">70</span> Pages &bull; 
+
+              <span id="total-modules-display" class="font-bold text-blue-600">21</span> Tax Forms Extracted
+
+            </p>
+
+            <div class="mt-1 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg inline-flex items-center gap-2">
+
+              <i class="fa-solid fa-calculator text-blue-600"></i>
+
+              <span id="packet-summary-line">21 forms | 17 with amounts | 4 zero-value | 2 informational (5498)</span>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <!-- GLOBAL ACTIONS -->
+
+        <div class="flex flex-wrap items-center gap-2.5">
+
+          <button onclick="generateDrakeNativeImport()" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs shadow-sm transition">
+
+            <i class="fa-solid fa-file-export text-purple-600"></i> Generate .7X5 Native Import
+
+          </button>
+
+          <button onclick="executePopulateAllModules()" class="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow transition">
+
+            <i class="fa-solid fa-bolt"></i> Populate All into Drake
+
+          </button>
+
+          <button onclick="resetPdfUpload()" class="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-semibold text-xs transition">
+
+            <i class="fa-solid fa-rotate-left mr-1"></i> New PDF
+
+          </button>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- CATEGORY PILL FILTER BAR -->
+
+      <div id="category-filter-bar" class="flex flex-wrap items-center gap-2 bg-slate-100 p-2 rounded-xl border border-slate-200 text-xs">
+
+        <button onclick="filterModulesByCategory('all')" id="cat-btn-all" class="px-3 py-1.5 rounded-lg font-bold bg-white text-blue-700 shadow-sm border border-slate-200">
+
+          All Forms (<span id="count-all">21</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('W-2')" id="cat-btn-w2" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          W-2 Wages (<span id="count-w2">1</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('SSA-1042S')" id="cat-btn-ssa" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          SSA-1042S (<span id="count-ssa">1</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('1099-R')" id="cat-btn-1099r" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          1099-R Pensions (<span id="count-1099r">3</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('1099-INT')" id="cat-btn-1099int" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          1099-INT Interest (<span id="count-1099int">5</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('1099-DIV')" id="cat-btn-1099div" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          1099-DIV Dividends (<span id="count-1099div">2</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('1099-B')" id="cat-btn-1099b" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          1099-B Capital Gains (<span id="count-1099b">2</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('1099-MISC')" id="cat-btn-1099misc" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          1099-MISC (<span id="count-1099misc">2</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('1099-OID')" id="cat-btn-1099oid" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          1099-OID (<span id="count-1099oid">2</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('1098')" id="cat-btn-1098" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          1098 Mortgage (<span id="count-1098">1</span>)
+
+        </button>
+
+        <button onclick="filterModulesByCategory('5498')" id="cat-btn-5498" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900">
+
+          5498 IRA (<span id="count-5498">2</span>)
+
+        </button>
+
+      </div>
+
+
+
+      <!-- MAIN 2-COLUMN SPLIT: MODULE SELECTOR & PDF PREVIEW (LEFT) + EXTRACTED FIELDS (RIGHT) -->
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+        
+
+        <!-- LEFT COLUMN (5 cols): MODULE SELECTOR LIST & SYNCHRONIZED PDF VIEWER -->
+
+        <div class="lg:col-span-5 space-y-4">
+
+          
+
+          <!-- MODULE SELECTOR CARDS CONTAINER -->
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+            <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+
+              <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+
+                <i class="fa-solid fa-list-check text-blue-600"></i> Extracted Tax Forms
+
+              </span>
+
+              <span class="text-[11px] text-slate-500 font-medium">Click a form to view & edit fields</span>
+
+            </div>
+
+            
+
+            <div id="module-cards-list" class="divide-y divide-slate-100 max-h-[380px] overflow-y-auto custom-scrollbar">
+
+              <!-- Dynamically populated by renderModuleCards() -->
+
+            </div>
+
+          </div>
+
+
+
+          <!-- SYNCHRONIZED PDF VIEWER -->
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden sticky top-16">
+
+            <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+
+              <span id="pdf-preview-title" class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+
+                <i class="fa-solid fa-file-pdf text-red-500"></i> Document Preview: Page 1
+
+              </span>
+
+              <div class="flex items-center gap-2">
+
+                <a id="btn-open-pdf-tab" href="/api/pdf-preview#page=1" target="_blank" class="text-[11px] font-semibold text-blue-600 hover:underline inline-flex items-center gap-1">
+
+                  Full Page <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+
+                </a>
+
+              </div>
+
+            </div>
+
+            <div class="relative bg-slate-100">
+
+              <iframe id="pdf-preview-iframe" src="/api/pdf-preview#page=1&zoom=page-width" class="w-full h-[520px] border-0" title="PDF Document Preview"></iframe>
+
+            </div>
+
+          </div>
+
+
+
+        </div>
+
+
+
+        <!-- RIGHT COLUMN (7 cols): COMPREHENSIVE EDITABLE FORM FIELDS -->
+
+        <div class="lg:col-span-7 space-y-4">
+
+          
+
+          <!-- ACTIVE FORM HEADER & ACTIONS -->
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+
+            <div>
+
+              <div class="flex items-center gap-2">
+
+                <span id="active-form-type-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">Form W-2</span>
+
+                <span id="active-form-screen-badge" class="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-purple-100 text-purple-800">Drake Screen: W2</span>
+
+                <span id="active-form-page-badge" class="text-xs font-semibold text-slate-500">Page 1 of 70</span>
+
+              </div>
+
+              <h3 id="active-form-title" class="text-base font-bold text-slate-900 mt-1">Form W-2 — GRANITE PEAK INDUSTRIES INC</h3>
+
+            </div>
+
+
+
+            <!-- Single Module Action -->
+
+            <div class="flex items-center gap-2">
+
+              <button onclick="executePopulateSingleModule()" id="btn-populate-single" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow transition">
+
+                <i class="fa-solid fa-arrow-right-to-bracket"></i> Populate This Screen
+
+              </button>
+
+            </div>
+
+          </div>
+
+
+
+          <!-- DYNAMIC FIELDS CONTAINER -->
+
+          <div id="active-fields-container" class="space-y-4">
+
+            <!-- Dynamically populated by renderActiveFormFields() -->
+
+          </div>
+
+
+
+        </div>
+
+
+
+      </div>
+
+
+
+    </div>
+
+
+
+  </div>
+
+
+
+  <!-- ========================================================================= -->
+
+  <!-- MODULE 2: ZOHO CREATOR DYNAMIC FIELD MAPPING (OPENS ON CREATOR CLICK)     -->
+
+  <!-- ========================================================================= -->
+
+  <div id="view-mapping-mode" class="hidden flex-1 flex flex-col">
+
+    
+
+    <!-- TOOLBAR -->
+
+    <div class="bg-white border-b border-slate-200 px-6 py-3 shadow-xs">
+
+      <div class="max-w-[1800px] mx-auto flex flex-wrap items-center justify-between gap-4">
+
+        
+
+        <!-- Form Selector & Connected Record Badge -->
+
+        <div class="flex flex-wrap items-center gap-3">
+
+          <label for="form-select" class="text-xs font-bold text-slate-700 uppercase tracking-wider">Zoho Form:</label>
+
+          <select id="form-select" onchange="onFormSelected()" class="text-xs font-semibold px-3 py-1.5 border border-slate-300 rounded-lg bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none min-w-[200px]">
+
+            <option value="Personal_Info">Personal Info (Name & Address)</option>
+
+            <option value="Dependents">Dependents (Screen 2)</option>
+
+            <option value="Additional_Information">Additional Information</option>
+
+            <option value="Checklist">Checklist</option>
+
+            <option value="Estimated_Tax">Estimated Tax</option>
+
+          </select>
+
+          <button onclick="fetchAllMetaAndDrakeFields()" title="Refresh fields from API" class="px-2.5 py-1.5 text-xs text-slate-600 hover:text-blue-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition">
+
+            <i class="fa-solid fa-rotate mr-1"></i> Refresh
+
+          </button>
+
+          
+
+          <!-- Connected Record Badge -->
+
+          <div id="connected-record-badge" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+
+            <i class="fa-solid fa-link text-indigo-500"></i>
+
+            <span id="connected-record-text">Record: 266830000014689319</span>
+
+          </div>
+
+        </div>
+
+
+
+        <!-- Center Prompt -->
+
+        <div id="selection-helper-banner" class="hidden md:flex flex-1 text-center justify-center px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 max-w-lg mx-auto">
+
+          <span id="selection-helper-text">Click a Meta field on the left &rarr; then click a Drake field on the right to connect.</span>
+
+        </div>
+
+
+
+        <!-- Actions: Auto-Map, Save, Insert into Drake, Stop -->
+
+        <div class="flex items-center gap-2.5">
+
+          <button onclick="autoSuggestMappings()" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs transition">
+
+            <i class="fa-solid fa-wand-magic-sparkles text-indigo-600"></i>
+
+            <span>Auto-Map</span>
+
+          </button>
+
+          <button onclick="saveFieldMappings()" id="btn-save-mappings" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-sm transition">
+
+            <i class="fa-solid fa-floppy-disk"></i>
+
+            <span>Save Mappings</span>
+
+          </button>
+
+          <button onclick="executeInsertIntoDrake()" id="btn-insert-drake" class="inline-flex items-center gap-2 px-6 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs shadow-md transition transform hover:-translate-y-0.5">
+
+            <i class="fa-solid fa-bolt text-sm"></i>
+
+            <span>Insert into Drake</span>
+
+          </button>
+
+          <button onclick="stopDrakeAutomation()" id="btn-stop-drake" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md transition hidden">
+
+            <i class="fa-solid fa-circle-stop text-sm"></i>
+
+            <span>Stop Automation</span>
+
+          </button>
+
+        </div>
+
+
+
+      </div>
+
+    </div>
+
+
+
+    <!-- STATS & PROGRESS -->
+
+    <div class="bg-slate-50 border-b border-slate-200 px-6 py-2">
+
+      <div class="max-w-[1800px] mx-auto flex items-center justify-between text-xs font-semibold">
+
+        <span class="text-slate-600">
+
+          <span id="stat-mapped-count" class="text-blue-600 font-mono font-bold">0</span> / <span id="stat-drake-total" class="font-mono font-bold">33</span> Drake Fields Mapped &bull; <span id="stat-percentage-text">0% Complete</span>
+
+        </span>
+
+        <div class="w-48 bg-slate-200 rounded-full h-2 overflow-hidden">
+
+          <div id="stat-progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- 2-COLUMN BALANCED MAPPING GRID -->
+
+    <div class="max-w-[1800px] mx-auto px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 w-full items-start">
+
+      
+
+      <!-- COLUMN 1: ZOHO CREATOR META FIELDS (6 COLS) -->
+
+      <div class="lg:col-span-6 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[750px]">
+
+        <div class="p-3.5 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50/70 rounded-t-xl">
+
+          <div class="flex items-center gap-2 font-bold text-xs text-slate-900">
+
+            <i class="fa-solid fa-database text-blue-600"></i>
+
+            <span>Zoho Creator Fields (Meta API)</span>
+
+          </div>
+
+          <span id="meta-fields-badge" class="px-2 py-0.5 rounded text-[11px] font-mono bg-blue-100 text-blue-800 font-bold">0 Fields</span>
+
+        </div>
+
+
+
+        <!-- Search Bar -->
+
+        <div class="p-2.5 border-b border-slate-100 bg-white">
+
+          <div class="relative">
+
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+
+            <input type="text" id="meta-search-input" oninput="renderMetaFields()" placeholder="Filter Zoho fields..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+
+          </div>
+
+        </div>
+
+
+
+        <!-- Scrollable Meta Fields List -->
+
+        <div id="meta-fields-container" class="p-3 overflow-y-auto space-y-2 flex-1 custom-scrollbar"></div>
+
+      </div>
+
+
+
+      <!-- COLUMN 2: DRAKE TARGET FIELDS (6 COLS) -->
+
+      <div class="lg:col-span-6 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[750px]">
+
+        <div class="p-3.5 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50/70 rounded-t-xl">
+
+          <div class="flex items-center gap-2 font-bold text-xs text-slate-900">
+
+            <i class="fa-solid fa-bullseye text-emerald-600"></i>
+
+            <span id="drake-screen-title">Drake Tax Target Fields</span>
+
+          </div>
+
+          <span id="drake-fields-badge" class="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-100 text-emerald-800 font-bold">0 Fields</span>
+
+        </div>
+
+
+
+        <!-- Search Bar -->
+
+        <div class="p-2.5 border-b border-slate-100 bg-white">
+
+          <div class="relative">
+
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+
+            <input type="text" id="drake-search-input" oninput="renderDrakeFields()" placeholder="Filter Drake target fields..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+
+          </div>
+
+        </div>
+
+
+
+        <!-- Scrollable Drake Fields List -->
+
+        <div id="drake-fields-container" class="p-3 overflow-y-auto space-y-3 flex-1 custom-scrollbar"></div>
+
+      </div>
+
+
+
+    </div>
+
+
+
+  </div>
+
+
+
+  <!-- JAVASCRIPT LOGIC -->
+
+  <script>
+
+    // URL Parameter Parsing (e.g. ?mode=creator&type=personal&record_id=266830000014689319)
+
+    const urlParams = new URLSearchParams(window.location.search);
+
+    const queryMode = (urlParams.get('mode') || '').toLowerCase().trim();
+
+    const queryRecordId = (urlParams.get('record_id') || '').trim();
+
+    const queryType = (urlParams.get('type') || '').toLowerCase().trim();
+
+
+
+    let activeMasterMode = 'pdf';
+
+    let currentModuleType = queryType || 'personal';
+
+    let currentRecordId = queryRecordId || '';
+
+    let currentActiveForm = 'Personal_Info';
+
+    let currentDrakeScreen = 'Screen 1';
+
+    let currentFlattenedFields = [];
+
+    let currentDrakeFields = [];
+
+    let activeMappings = {};
+
+    let selectedMetaField = null;
+
+
+
+    let packetData = null;
+
+    let selectedModuleIndex = 0;
+
+    let currentCategoryFilter = 'all';
+
+
+
+    // -------------------------------------------------------------------------
+
+    // PAGE INITIALIZATION: SMART ROUTING BASED ON URL PARAMS
+
+    // -------------------------------------------------------------------------
+
+    document.addEventListener('DOMContentLoaded', () => {
+
+      // If mode=creator OR record_id OR type was passed in the URL, immediately open the Zoho Field Mapping page!
+
+      if (queryMode === 'creator' || queryRecordId || queryType) {
+
+        switchMasterMode('mapping');
+
+        if (currentRecordId) {
+
+          const recBadge = document.getElementById('connected-record-badge');
+
+          const recText = document.getElementById('connected-record-text');
+
+          if (recBadge && recText) {
+
+            recText.textContent = `Record: ${currentRecordId}`;
+
+            recBadge.classList.remove('hidden');
+
+            recBadge.classList.add('inline-flex');
+
+          }
+
+        }
+
+      } else {
+
+        // Default direct visit: open PDF Extractor upload screen
+
+        switchMasterMode('pdf');
+
+      }
+
+    });
+
+
+
+    // -------------------------------------------------------------------------
+
+    // MASTER WORKFLOW TAB SWITCHER
+
+    // -------------------------------------------------------------------------
+
+    function switchMasterMode(mode) {
+
+      activeMasterMode = mode;
+
+      
+
+      const vPdf = document.getElementById('view-pdf-mode');
+
+      const vMap = document.getElementById('view-mapping-mode');
+
+
+
+      const btnPdf = document.getElementById('nav-mode-pdf');
+
+      const btnMap = document.getElementById('nav-mode-mapping');
+
+
+
+      if (vPdf) vPdf.style.display = 'none';
+
+      if (vMap) vMap.style.display = 'none';
+
+
+
+      btnPdf.className = 'flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs transition text-slate-600 hover:text-slate-900';
+
+      btnMap.className = 'flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs transition text-slate-600 hover:text-slate-900';
+
+
+
+      if (mode === 'pdf') {
+
+        if (vPdf) vPdf.style.display = 'block';
+
+        btnPdf.className = 'flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs transition bg-white text-blue-700 shadow border border-slate-200';
+
+      } else if (mode === 'mapping') {
+
+        if (vMap) vMap.style.display = 'flex';
+
+        btnMap.className = 'flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-xs transition bg-white text-indigo-700 shadow border border-slate-200';
+
+        fetchAllMetaAndDrakeFields();
+
+      }
+
+    }
+
+
+
+    // -------------------------------------------------------------------------
+
+    // PDF TAX PACKET WORKFLOW
+
+    // -------------------------------------------------------------------------
+
+    async function loadSampleTaxPacket() {
+
+      showPdfLoading(true);
+
+      try {
+
+        const resp = await fetch('/api/load-sample');
+
+        const res = await resp.json();
+
+        if (res.success && res.is_packet) {
+
+          handlePacketLoaded(res);
+
+        } else if (res.success && !res.is_packet && res.data) {
+
+          handleSingleW2Loaded(res.data);
+
+        } else {
+
+          showBuildNotification('Sample Error', res.error || 'Unknown error', 'error');
+
+          showPdfLoading(false);
+
+        }
+
+      } catch (err) {
+
+        showBuildNotification('Network Error', err.message, 'error');
+
+        showPdfLoading(false);
+
+      }
+
+    }
+
+
+
+    function showPdfLoading(isLoading) {
+
+      const u = document.getElementById('pdf-upload-view');
+
+      const l = document.getElementById('pdf-loading-view');
+
+      const r = document.getElementById('pdf-review-view');
+
+      
+
+      if (isLoading) {
+
+        if (u) u.style.display = 'none';
+
+        if (r) r.style.display = 'none';
+
+        if (l) l.style.display = 'block';
+
+      } else {
+
+        if (l) l.style.display = 'none';
+
+      }
+
+    }
+
+
+
+    function handlePacketLoaded(data) {
+
+      packetData = data;
+
+      
+
+      const u = document.getElementById('pdf-upload-view');
+
+      const l = document.getElementById('pdf-loading-view');
+
+      const r = document.getElementById('pdf-review-view');
+
+
+
+      if (u) u.style.display = 'none';
+
+      if (l) l.style.display = 'none';
+
+      if (r) r.style.display = 'block';
+
+
+
+      // Update Header info
+
+      const totalMods = data.total_modules || (data.modules ? data.modules.length : 21);
+
+      document.getElementById('total-pages-display').textContent = data.total_pages || 70;
+
+      document.getElementById('total-modules-display').textContent = totalMods;
+
+      document.getElementById('badge-pdf-count').textContent = `${totalMods} Forms`;
+
+      document.getElementById('count-all').textContent = totalMods;
+
+
+
+      const summaryLineEl = document.getElementById('packet-summary-line');
+
+      if (summaryLineEl && data.summary_line) {
+
+        summaryLineEl.textContent = data.summary_line;
+
+      }
+
+
+
+      // Update category counts
+
+      if (data.category_counts) {
+
+        if (data.category_counts['W-2 (Wages & Salaries)']) document.getElementById('count-w2').textContent = data.category_counts['W-2 (Wages & Salaries)'];
+
+        if (data.category_counts['Social Security Benefits (SSA-1042S)'] || data.category_counts['Social Security Benefits']) {
+
+          document.getElementById('count-ssa').textContent = data.category_counts['Social Security Benefits (SSA-1042S)'] || data.category_counts['Social Security Benefits'];
+
+        }
+
+        if (data.category_counts['Pensions & Annuities (1099-R)']) document.getElementById('count-1099r').textContent = data.category_counts['Pensions & Annuities (1099-R)'];
+
+        if (data.category_counts['Interest Income (1099-INT)']) document.getElementById('count-1099int').textContent = data.category_counts['Interest Income (1099-INT)'];
+
+        if (data.category_counts['Dividend Income (1099-DIV)']) document.getElementById('count-1099div').textContent = data.category_counts['Dividend Income (1099-DIV)'];
+
+        if (data.category_counts['Capital Gains & Losses (1099-B)']) document.getElementById('count-1099b').textContent = data.category_counts['Capital Gains & Losses (1099-B)'];
+
+        if (data.category_counts['Miscellaneous Income (1099-MISC)']) document.getElementById('count-1099misc').textContent = data.category_counts['Miscellaneous Income (1099-MISC)'];
+
+        if (data.category_counts['Original Issue Discount (1099-OID)']) document.getElementById('count-1099oid').textContent = data.category_counts['Original Issue Discount (1099-OID)'];
+
+        if (data.category_counts['Mortgage Interest (Form 1098)']) document.getElementById('count-1098').textContent = data.category_counts['Mortgage Interest (Form 1098)'];
+
+        if (data.category_counts['IRA Contribution Info (Form 5498)']) document.getElementById('count-5498').textContent = data.category_counts['IRA Contribution Info (Form 5498)'];
+
+      }
+
+
+
+      renderModuleCards();
+
+      selectModule(0);
+
+    }
+
+
+
+    function renderModuleCards() {
+
+      const container = document.getElementById('module-cards-list');
+
+      if (!packetData || !packetData.modules) return;
+
+
+
+      container.innerHTML = '';
+
+      packetData.modules.forEach((mod, idx) => {
+
+        // Filter by category
+
+        if (currentCategoryFilter !== 'all') {
+
+          if (currentCategoryFilter === 'W-2' && mod.type !== 'W-2') return;
+
+          if (currentCategoryFilter === 'SSA-1042S' && !mod.type.startsWith('SSA')) return;
+
+          if (currentCategoryFilter === 'SSA-1099' && !mod.type.startsWith('SSA')) return;
+
+          if (currentCategoryFilter === '1099-R' && mod.type !== '1099-R') return;
+
+          if (currentCategoryFilter === '1099-INT' && mod.type !== '1099-INT') return;
+
+          if (currentCategoryFilter === '1098' && mod.type !== '1098') return;
+
+          if (currentCategoryFilter === '5498' && mod.type !== '5498') return;
+
+          if (currentCategoryFilter === '1099-DIV' && mod.type !== '1099-DIV') return;
+
+          if (currentCategoryFilter === '1099-B' && mod.type !== '1099-B') return;
+
+          if (currentCategoryFilter === '1099-MISC' && mod.type !== '1099-MISC') return;
+
+          if (currentCategoryFilter === '1099-OID' && mod.type !== '1099-OID') return;
+
+        }
+
+
+
+        const isSelected = idx === selectedModuleIndex;
+
+        const card = document.createElement('div');
+
+        card.className = `p-3.5 cursor-pointer transition hover:bg-slate-50 flex items-center justify-between gap-3 ${isSelected ? 'card-selected' : ''}`;
+
+        card.onclick = () => selectModule(idx);
+
+
+
+        let keyAmount = '';
+
+        if (mod.is_zero_value) {
+
+          keyAmount = '<span class="text-slate-400 font-semibold text-[11px]">Zero-Value</span>';
+
+        } else if (mod.type === 'W-2') {
+
+          keyAmount = `$${parseFloat(mod.box1_wages || 0).toLocaleString()} Wages`;
+
+        } else if (mod.type.startsWith('SSA')) {
+
+          keyAmount = `$${parseFloat(mod.box5_net_benefits || 0).toLocaleString()} Net`;
+
+        } else if (mod.type === '1099-R') {
+
+          keyAmount = `$${parseFloat(mod.gross_distribution || 0).toLocaleString()} Dist`;
+
+        } else if (mod.type === '1099-INT') {
+
+          keyAmount = `$${parseFloat(mod.interest_income || 0).toLocaleString()} Int`;
+
+        } else if (mod.type === '1098') {
+
+          keyAmount = `$${parseFloat(mod.mortgage_interest || 0).toLocaleString()} Int`;
+
+        } else if (mod.type === '5498') {
+
+          keyAmount = `$${parseFloat(mod.roth_conversion_amount || mod.fmv_of_account || 0).toLocaleString()} FMV`;
+
+        } else if (mod.type === '1099-DIV') {
+
+          keyAmount = `$${parseFloat(mod.ordinary_dividends || 0).toLocaleString()} Div`;
+
+        } else if (mod.type === '1099-B') {
+
+          keyAmount = `$${parseFloat(mod.total_proceeds || 0).toLocaleString()} Proceeds`;
+
+        } else if (mod.type === '1099-MISC') {
+
+          keyAmount = '<span class="text-slate-400 font-semibold text-[11px]">$0.00 Royalties</span>';
+
+        } else if (mod.type === '1099-OID') {
+
+          keyAmount = '<span class="text-slate-400 font-semibold text-[11px]">$0.00 OID</span>';
+
+        }
+
+
+
+        const flagBadge = (mod.flags && mod.flags.length) ? `
+
+          <span title="${mod.flags[0]}" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1">
+
+            <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> Flag
+
+          </span>
+
+        ` : '';
+
+
+
+        const statusTag = mod.is_zero_value ? `
+
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+
+            No Entry Req.
+
+          </span>
+
+        ` : `
+
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+
+            Screen ${mod.screen}
+
+          </span>
+
+        `;
+
+
+
+        card.innerHTML = `
+
+          <div class="flex items-center gap-3">
+
+            <span class="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-mono font-bold text-slate-700 border">
+
+              P.${mod.page}
+
+            </span>
+
+            <div>
+
+              <div class="flex items-center gap-1.5">
+
+                <span class="text-xs font-bold text-slate-900 leading-tight">${mod.title}</span>
+
+                ${flagBadge}
+
+              </div>
+
+              <p class="text-[11px] text-slate-500">${mod.payer || mod.broker || mod.lender || mod.trustee || 'Tax Entity'}</p>
+
+            </div>
+
+          </div>
+
+          <div class="text-right">
+
+            <span class="text-xs font-mono font-bold text-slate-900 block">${keyAmount}</span>
+
+            ${statusTag}
+
+          </div>
+
+        `;
+
+        container.appendChild(card);
+
+      });
+
+    }
+
+
+
+    function selectModule(idx) {
+
+      if (!packetData || !packetData.modules || !packetData.modules[idx]) return;
+
+      selectedModuleIndex = idx;
+
+      const mod = packetData.modules[idx];
+
+
+
+      renderModuleCards();
+
+
+
+      document.getElementById('active-form-type-badge').textContent = `Form ${mod.type}`;
+
+      document.getElementById('active-form-screen-badge').textContent = `Drake Screen: ${mod.screen}`;
+
+      document.getElementById('active-form-page-badge').textContent = `Page ${mod.page} of ${packetData.total_pages || 70}`;
+
+      document.getElementById('active-form-title').textContent = mod.title;
+
+
+
+      const iframe = document.getElementById('pdf-preview-iframe');
+
+      iframe.src = `/api/pdf-preview#page=${mod.page}&zoom=page-width`;
+
+      document.getElementById('pdf-preview-title').innerHTML = `
+
+        <i class="fa-solid fa-file-pdf text-red-500"></i> Document Preview: Page ${mod.page} (${mod.type})
+
+      `;
+
+      document.getElementById('btn-open-pdf-tab').href = `/api/pdf-preview#page=${mod.page}`;
+
+
+
+      renderActiveFormFields(mod);
+
+    }
+
+
+
+    function renderActiveFormFields(mod) {
+
+      const container = document.getElementById('active-fields-container');
+
+      container.innerHTML = '';
+
+
+
+      let topBannersHtml = '';
+
+      if (mod.flags && mod.flags.length > 0) {
+
+        topBannersHtml += `
+
+          <div class="mb-4 p-3.5 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl shadow-xs">
+
+            <div class="flex items-start gap-2.5">
+
+              <i class="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5 text-base shrink-0"></i>
+
+              <div class="space-y-1">
+
+                <span class="text-xs font-bold uppercase tracking-wider text-amber-950 block">Tax Review Flag / Form Notice</span>
+
+                ${mod.flags.map(f => `<p class="text-xs font-semibold text-amber-900 leading-relaxed">${f}</p>`).join('')}
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      }
+
+
+
+      if (mod.status === 'Zero-value — no Drake entry required' || mod.is_zero_value) {
+
+        topBannersHtml += `
+
+          <div class="mb-4 p-3.5 bg-slate-100 border-l-4 border-slate-500 rounded-r-xl flex items-center justify-between shadow-xs">
+
+            <div class="flex items-center gap-2.5">
+
+              <i class="fa-solid fa-circle-check text-slate-600 text-sm"></i>
+
+              <span class="text-xs font-bold text-slate-800">Status: Zero-value — no Drake entry required</span>
+
+            </div>
+
+            <span class="px-2.5 py-1 text-[11px] font-mono font-bold bg-slate-200 text-slate-700 rounded border border-slate-300">Screen ${mod.screen}</span>
+
+          </div>
+
+        `;
+
+      }
+
+
+
+      if (mod.type === 'W-2') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-building text-blue-600 mr-1.5"></i> Employer Information</span>
+
+              <span class="font-mono text-slate-400">Box b &bull; c</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Employer EIN (Box b)</label>
+
+                <input type="text" id="ein" value="${mod.ein || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Employer Legal Name (Box c)</label>
+
+                <input type="text" id="employer_name" value="${mod.employer_name || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div class="sm:col-span-2">
+
+                <label class="block font-semibold text-slate-600 mb-1">Employer Street Address & ZIP</label>
+
+                <input type="text" id="employer_address" value="${mod.employer_address || ''}" class="w-full px-3 py-1.5 border rounded-lg text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-user text-blue-600 mr-1.5"></i> Employee Details</span>
+
+              <span class="font-mono text-slate-400">Box a &bull; e &bull; f</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Employee SSN (Box a)</label>
+
+                <input type="text" id="employee_ssn" value="${mod.employee_ssn || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Employee Full Name (Box e)</label>
+
+                <input type="text" id="employee_name" value="${mod.employee_name || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div class="sm:col-span-2">
+
+                <label class="block font-semibold text-slate-600 mb-1">Employee Address & ZIP (Box f)</label>
+
+                <input type="text" id="employee_address" value="${mod.employee_address || ''}" class="w-full px-3 py-1.5 border rounded-lg text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-money-bill-1-wave text-emerald-600 mr-1.5"></i> Wages & Federal Withholdings</span>
+
+              <span class="font-mono text-slate-400">Boxes 1 – 6</span>
+
+            </h4>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 1 Wages</label>
+
+                <input type="text" id="box1_wages" value="${mod.box1_wages || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-900 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 2 Fed Tax Withheld</label>
+
+                <input type="text" id="box2_fed_withheld" value="${mod.box2_fed_withheld || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-blue-700 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 3 SS Wages</label>
+
+                <input type="text" id="box3_ss_wages" value="${mod.box3_ss_wages || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 4 SS Tax</label>
+
+                <input type="text" id="box4_ss_tax" value="${mod.box4_ss_tax || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 5 Medicare Wages</label>
+
+                <input type="text" id="box5_medicare_wages" value="${mod.box5_medicare_wages || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 6 Medicare Tax</label>
+
+                <input type="text" id="box6_medicare_tax" value="${mod.box6_medicare_tax || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-list-check text-purple-600 mr-1.5"></i> Box 12 & Retirement</span>
+
+              <span class="font-mono text-slate-400">Boxes 12 &bull; 13</span>
+
+            </h4>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs items-center">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">12a Code</label>
+
+                <input type="text" id="box12a_code" value="${mod.box12a_code || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">12a Amount</label>
+
+                <input type="text" id="box12a_amount" value="${mod.box12a_amount || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">12b Code</label>
+
+                <input type="text" id="box12b_code" value="${mod.box12b_code || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">12b Amount</label>
+
+                <input type="text" id="box12b_amount" value="${mod.box12b_amount || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div class="sm:col-span-2 pt-2">
+
+                <label class="inline-flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+
+                  <input type="checkbox" id="box13_retirement_plan" ${mod.box13_retirement_plan ? 'checked' : ''} class="w-4 h-4 text-blue-600 rounded">
+
+                  <span>Box 13: Retirement Plan Covered</span>
+
+                </label>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      } else if (mod.type === '1099-INT') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-building-columns text-amber-600 mr-1.5"></i> Payer & Account Details</span>
+
+              <span class="font-mono text-slate-400">Screen INT</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Payer Name</label>
+
+                <input type="text" id="payer" value="${mod.payer || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Payer TIN</label>
+
+                <input type="text" id="payer_tin" value="${mod.payer_tin || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-percent text-emerald-600 mr-1.5"></i> Interest Income & Withholdings</span>
+
+              <span class="font-mono text-slate-400">Boxes 1 – 8</span>
+
+            </h4>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 1 Interest Income</label>
+
+                <input type="text" id="interest_income" value="${mod.interest_income || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-emerald-700 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 2 Early Withdrawal Penalty</label>
+
+                <input type="text" id="early_withdrawal_penalty" value="${mod.early_withdrawal_penalty || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 3 US Savings Bonds Interest</label>
+
+                <input type="text" id="us_savings_bonds_interest" value="${mod.us_savings_bonds_interest || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 4 Fed Tax Withheld</label>
+
+                <input type="text" id="fed_tax_withheld" value="${mod.fed_tax_withheld || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-blue-700">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 8 Tax-Exempt Interest</label>
+
+                <input type="text" id="tax_exempt_interest" value="${mod.tax_exempt_interest || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      } else if (mod.type === '1099-R') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-piggy-bank text-purple-600 mr-1.5"></i> Pension / IRA Payer Details</span>
+
+              <span class="font-mono text-slate-400">Screen 1099</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Payer Legal Name</label>
+
+                <input type="text" id="payer" value="${mod.payer || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Payer TIN</label>
+
+                <input type="text" id="payer_tin" value="${mod.payer_tin || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-money-bill-transfer text-emerald-600 mr-1.5"></i> Distributions & Taxes</span>
+
+              <span class="font-mono text-slate-400">Boxes 1 – 7</span>
+
+            </h4>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 1 Gross Distribution</label>
+
+                <input type="text" id="gross_distribution" value="${mod.gross_distribution || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-900 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 2a Taxable Amount</label>
+
+                <input type="text" id="taxable_amount" value="${mod.taxable_amount || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-purple-700 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 4 Fed Tax Withheld</label>
+
+                <input type="text" id="fed_tax_withheld" value="${mod.fed_tax_withheld || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-blue-700">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 7 Distribution Code</label>
+
+                <input type="text" id="dist_code" value="${mod.dist_code || '7'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div class="sm:col-span-2 pt-2">
+
+                <label class="inline-flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+
+                  <input type="checkbox" id="is_ira" ${mod.is_ira ? 'checked' : ''} class="w-4 h-4 text-purple-600 rounded">
+
+                  <span>IRA / SEP / SIMPLE Checkbox Checked</span>
+
+                </label>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      } else if (mod.type === '1099-DIV') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-chart-pie text-cyan-600 mr-1.5"></i> Dividend Income & Distributions</span>
+
+              <span class="font-mono text-slate-400">Screen DIV &bull; ${mod.broker || 'Broker'}</span>
+
+            </h4>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 1a Total Ordinary Dividends</label>
+
+                <input type="text" id="ordinary_dividends" value="${mod.ordinary_dividends || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-900 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 1b Qualified Dividends</label>
+
+                <input type="text" id="qualified_dividends" value="${mod.qualified_dividends || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-cyan-700 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 2a Total Capital Gain</label>
+
+                <input type="text" id="capital_gain_dist" value="${mod.capital_gain_dist || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 5 Section 199A Dividends</label>
+
+                <input type="text" id="section_199a_dividends" value="${mod.section_199a_dividends || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 7 Foreign Tax Paid</label>
+
+                <input type="text" id="foreign_tax_paid" value="${mod.foreign_tax_paid || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      }
+
+      else if (mod.type === '1099-B') {
+
+        const recMatched = mod.reconciliation && mod.reconciliation.is_matched;
+
+        const recBanner = recMatched ? `
+
+          <div class="mt-4 p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between">
+
+            <div>
+
+              <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+
+                <i class="fa-solid fa-circle-check text-emerald-600"></i> Lot-Level Reconciliation (650 Lots Verified)
+
+              </span>
+
+              <p class="text-[11px] text-emerald-700 mt-0.5">
+
+                ${mod.broker.includes('Fidelity') ? 'Fidelity: 214 short-term lots (Box A: $1,822,737.43 proceeds / $1,761,427.40 basis / $1,074.72 wash sale) + 185 long-term lots (Box D: $1,809,649.63 proceeds / $1,208,835.52 basis) match statement totals.' : 'Schwab: 135 short-term lots (Box A: $1,016,140.57 proceeds / $986,937.24 basis) + 116 long-term lots (Box D: $1,025,217.90 proceeds / $704,607.02 basis) match statement totals.'}
+
+              </p>
+
+            </div>
+
+            <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-200 text-emerald-900 border border-emerald-300">RECONCILED</span>
+
+          </div>
+
+        ` : (mod.reconciliation ? `<div class="mt-4 p-3 bg-rose-50 border border-rose-300 text-rose-800 rounded-xl text-xs font-bold">Reconciliation Error: Lot sums do not match summary totals!</div>` : '');
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-arrow-trend-up text-rose-600 mr-1.5"></i> 1099-B Capital Gains Summary &bull; ${mod.broker || ''}</span>
+
+              <span class="font-mono text-slate-400">Screen D / Form 8949</span>
+
+            </h4>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+
+              <div class="bg-slate-50 p-2.5 rounded-lg border">
+
+                <span class="text-slate-500 block mb-0.5">Short-Term Proceeds</span>
+
+                <span class="font-mono font-bold text-slate-900">$${parseFloat(mod.short_term_proceeds || 0).toLocaleString()}</span>
+
+              </div>
+
+              <div class="bg-slate-50 p-2.5 rounded-lg border">
+
+                <span class="text-slate-500 block mb-0.5">Short-Term Cost Basis</span>
+
+                <span class="font-mono font-bold text-slate-900">$${parseFloat(mod.short_term_cost_basis || 0).toLocaleString()}</span>
+
+              </div>
+
+              <div class="bg-slate-50 p-2.5 rounded-lg border">
+
+                <span class="text-slate-500 block mb-0.5">Long-Term Proceeds</span>
+
+                <span class="font-mono font-bold text-slate-900">$${parseFloat(mod.long_term_proceeds || 0).toLocaleString()}</span>
+
+              </div>
+
+              <div class="bg-slate-50 p-2.5 rounded-lg border">
+
+                <span class="text-slate-500 block mb-0.5">Long-Term Cost Basis</span>
+
+                <span class="font-mono font-bold text-slate-900">$${parseFloat(mod.long_term_cost_basis || 0).toLocaleString()}</span>
+
+              </div>
+
+            </div>
+
+            
+
+            <div class="mt-4 p-3 bg-purple-50 rounded-xl border border-purple-200 flex items-center justify-between">
+
+              <div>
+
+                <span class="text-xs font-bold text-purple-900 block">Instant Native Batch Import (.7X5)</span>
+
+                <span class="text-[11px] text-purple-700">Write directly to C:\\DRAKE25\\IMPORT for 1-click Screen 8949 import.</span>
+
+              </div>
+
+              <button onclick="generateDrakeNativeImport()" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow transition">
+
+                <i class="fa-solid fa-file-export mr-1"></i> Export .7X5 File
+
+              </button>
+
+            </div>
+
+            ${recBanner}
+
+          </div>
+
+        `;
+
+      } else if (mod.type === '1098') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-house text-teal-600 mr-1.5"></i> Form 1098 Mortgage Interest</span>
+
+              <span class="font-mono text-slate-400">Schedule A</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Lender Name</label>
+
+                <input type="text" id="lender" value="${mod.lender || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 1 Mortgage Interest Paid</label>
+
+                <input type="text" id="mortgage_interest" value="${mod.mortgage_interest || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-teal-700 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 2 Outstanding Principal</label>
+
+                <input type="text" id="outstanding_principal" value="${mod.outstanding_principal || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Property Taxes Paid from Escrow</label>
+
+                <input type="text" id="property_taxes_escrow" value="${mod.property_taxes_escrow || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      } else if (mod.type === '5498') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-shield-halved text-indigo-600 mr-1.5"></i> Form 5498 IRA Contributions</span>
+
+              <span class="font-mono text-slate-400">Screen ROTH</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Trustee / Issuer Name</label>
+
+                <input type="text" id="trustee" value="${mod.trustee || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 3 Roth Conversion Amount</label>
+
+                <input type="text" id="roth_conversion_amount" value="${mod.roth_conversion_amount || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-indigo-700 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 5 Fair Market Value (FMV)</label>
+
+                <input type="text" id="fmv_of_account" value="${mod.fmv_of_account || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Account Type</label>
+
+                <input type="text" id="account_type" value="${mod.account_type || 'Roth IRA'}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      } else if (mod.type === 'SSA-1042S' || mod.type === 'SSA-1099') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-hand-holding-dollar text-emerald-600 mr-1.5"></i> Form SSA-1042S Social Security (Nonresident Alien)</span>
+
+              <span class="font-mono text-slate-400">Screen SSA</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Beneficiary Name</label>
+
+                <input type="text" id="beneficiary_name" value="${mod.beneficiary_name || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Claim Number</label>
+
+                <input type="text" id="claim_number" value="${mod.claim_number || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 3 Benefits Paid</label>
+
+                <input type="text" id="box3_benefits_paid" value="${mod.box3_benefits_paid || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 5 Net Benefits</label>
+
+                <input type="text" id="box5_net_benefits" value="${mod.box5_net_benefits || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-emerald-700 text-sm">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 6 Rate of Tax</label>
+
+                <input type="text" id="box6_rate_of_tax" value="${mod.box6_rate_of_tax || '10%'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 7 Tax Withheld</label>
+
+                <input type="text" id="box7_tax_withheld" value="${mod.box7_tax_withheld || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-blue-700">
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      } else if (mod.type === '1099-MISC') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-file-invoice-dollar text-indigo-600 mr-1.5"></i> Form 1099-MISC Miscellaneous Information &bull; ${mod.payer || ''}</span>
+
+              <span class="font-mono text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">Drake Screen: 99M</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Payer Name</label>
+
+                <input type="text" id="payer" value="${mod.payer || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Payer TIN</label>
+
+                <input type="text" id="payer_tin" value="${mod.payer_tin || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Account Number</label>
+
+                <input type="text" id="account_number" value="${mod.account_number || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 2 Royalties</label>
+
+                <input type="text" id="box2_royalties" value="${mod.box2_royalties || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 3 Other Income</label>
+
+                <input type="text" id="box3_other_income" value="${mod.box3_other_income || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 4 Fed Tax Withheld</label>
+
+                <input type="text" id="box4_fed_tax_withheld" value="${mod.box4_fed_tax_withheld || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-blue-700">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Box 8 Substitute Payments</label>
+
+                <input type="text" id="box8_substitute_payments" value="${mod.box8_substitute_payments || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      } else if (mod.type === '1099-OID') {
+
+        container.innerHTML = topBannersHtml + `
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+
+            <h4 class="font-bold text-slate-900 border-b pb-2 mb-3 text-xs uppercase tracking-wider flex items-center justify-between">
+
+              <span><i class="fa-solid fa-coins text-amber-600 mr-1.5"></i> Form 1099-OID Original Issue Discount &bull; ${mod.payer || ''}</span>
+
+              <span class="font-mono text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">Drake Screen: OID</span>
+
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Payer Name</label>
+
+                <input type="text" id="payer" value="${mod.payer || ''}" class="w-full px-3 py-1.5 border rounded-lg font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Payer TIN</label>
+
+                <input type="text" id="payer_tin" value="${mod.payer_tin || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Account Number</label>
+
+                <input type="text" id="account_number" value="${mod.account_number || ''}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Original Issue Discount</label>
+
+                <input type="text" id="original_issue_discount" value="${mod.original_issue_discount || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono font-bold text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">OID on Treasury Obligations</label>
+
+                <input type="text" id="oid_treasury_obligations" value="${mod.oid_treasury_obligations || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Acquisition Premium</label>
+
+                <input type="text" id="acquisition_premium" value="${mod.acquisition_premium || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Tax-Exempt OID</label>
+
+                <input type="text" id="tax_exempt_oid" value="${mod.tax_exempt_oid || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Market Discount (All Lots)</label>
+
+                <input type="text" id="market_discount" value="${mod.market_discount || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+              <div>
+
+                <label class="block font-semibold text-slate-600 mb-1">Early Withdrawal Penalty</label>
+
+                <input type="text" id="early_withdrawal_penalty" value="${mod.early_withdrawal_penalty || '0.00'}" class="w-full px-3 py-1.5 border rounded-lg font-mono text-slate-800">
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      }
+
+    }
+
+
+
+    function filterModulesByCategory(cat) {
+
+      currentCategoryFilter = cat;
+
+      const buttons = document.querySelectorAll('#category-filter-bar button');
+
+      buttons.forEach(b => {
+
+        b.className = 'px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900';
+
+      });
+
+
+
+      const activeBtnId = 'cat-btn-' + (cat.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+      const activeBtn = document.getElementById(activeBtnId) || document.getElementById('cat-btn-all');
+
+      if (activeBtn) {
+
+        activeBtn.className = 'px-3 py-1.5 rounded-lg font-bold bg-white text-blue-700 shadow-sm border border-slate-200';
+
+      }
+
+
+
+      renderModuleCards();
+
+
+
+      // TASK 3e: Sync right-hand detail panel to the first form in that tab
+
+      if (packetData && packetData.modules && packetData.modules.length > 0) {
+
+        let targetIdx = -1;
+
+        if (cat === 'all') {
+
+          targetIdx = 0;
+
+        } else {
+
+          targetIdx = packetData.modules.findIndex(m => {
+
+            if (cat === 'SSA-1042S' || cat === 'SSA-1099') return m.type.startsWith('SSA');
+
+            return m.type === cat;
+
+          });
+
+        }
+
+        if (targetIdx >= 0) {
+
+          selectModule(targetIdx);
+
+        }
+
+      }
+
+    }
+
+
+
+    async function executePopulateSingleModule() {
+
+      if (!packetData || !packetData.modules || !packetData.modules[selectedModuleIndex]) return;
+
+      const mod = packetData.modules[selectedModuleIndex];
+
+
+
+      const btn = document.getElementById('btn-populate-single');
+
+      const origText = btn.innerHTML;
+
+      btn.disabled = true;
+
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Sending to Drake...';
+
+
+
+      try {
+
+        const resp = await fetch('/api/packet/populate-single', {
+
+          method: 'POST',
+
+          headers: { 'Content-Type': 'application/json' },
+
+          body: JSON.stringify({ module: mod })
+
+        });
+
+        const res = await resp.json();
+
+        if (res.success) {
+
+          showBuildNotification('Population Success', `Success! ${mod.title} populated into Drake Screen ${mod.screen}.`, 'success');
+
+        } else {
+
+          showBuildNotification('Drake Entry Notice', res.error || 'Please make sure Drake 2025 is open.', 'warning');
+
+        }
+
+      } catch (err) {
+
+        showBuildNotification('Network Error', err.message, 'error');
+
+      } finally {
+
+        btn.disabled = false;
+
+        btn.innerHTML = origText;
+
+      }
+
+    }
+
+
+
+    async function executePopulateAllModules() {
+
+      if (!packetData || !packetData.modules) return;
+
+      if (!confirm(`Are you sure you want to batch enter all ${packetData.modules.length} forms into Drake Tax 2025?`)) return;
+
+
+
+      try {
+
+        const resp = await fetch('/api/packet/populate-all', {
+
+          method: 'POST',
+
+          headers: { 'Content-Type': 'application/json' },
+
+          body: JSON.stringify({ modules: packetData.modules })
+
+        });
+
+        const res = await resp.json();
+
+        if (res.success) {
+
+          showBuildNotification('Batch Automation Success', 'Success! All forms processed into Drake Tax 2025.', 'success');
+
+        } else {
+
+          showBuildNotification('Drake Notice', res.error || 'Check Drake status', 'warning');
+
+        }
+
+      } catch (err) {
+
+        showBuildNotification('Batch Run Failed', err.message, 'error');
+
+      }
+
+    }
+
+
+
+    async function generateDrakeNativeImport() {
+
+      try {
+
+        const resp = await fetch('/api/packet/generate-import', {
+
+          method: 'POST',
+
+          headers: { 'Content-Type': 'application/json' },
+
+          body: JSON.stringify({ client_id: '555-71-3842', mode: 'Append' })
+
+        });
+
+        const res = await resp.json();
+
+        if (res.success) {
+
+          showBuildNotification('Drake Native Import File Ready', `File: ${res.file_path} (${res.transactions_count} transactions). In Drake Tax: Navigate to Screen 8949 and press Alt + I to import all rows!`, 'success');
+
+        } else {
+
+          showBuildNotification('Export Error', res.error, 'error');
+
+        }
+
+      } catch (err) {
+
+        showBuildNotification('Network Error', err.message, 'error');
+
+      }
+
+    }
+
+
+
+    function resetPdfUpload() {
+
+      packetData = null;
+
+      const u = document.getElementById('pdf-upload-view');
+
+      const l = document.getElementById('pdf-loading-view');
+
+      const r = document.getElementById('pdf-review-view');
+
+      if (r) r.style.display = 'none';
+
+      if (l) l.style.display = 'none';
+
+      if (u) u.style.display = 'block';
+
+      const fi = document.getElementById('file-input');
+
+      if (fi) fi.value = '';
+
+    }
+
+
+
+    // -------------------------------------------------------------------------
+
+    // FILE DRAG AND DROP SETUP
+
+    // -------------------------------------------------------------------------
+
+    const dropZone = document.getElementById('drop-zone');
+
+    const fileInput = document.getElementById('file-input');
+
+
+
+    if (dropZone && fileInput) {
+
+      dropZone.onclick = () => fileInput.click();
+
+      dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-blue-500', 'bg-blue-50/50'); };
+
+      dropZone.ondragleave = () => { dropZone.classList.remove('border-blue-500', 'bg-blue-50/50'); };
+
+      dropZone.ondrop = (e) => {
+
+        e.preventDefault();
+
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50/50');
+
+        if (e.dataTransfer.files.length) uploadPdfFile(e.dataTransfer.files[0]);
+
+      };
+
+      fileInput.onchange = (e) => {
+
+        if (e.target.files.length) uploadPdfFile(e.target.files[0]);
+
+      };
+
+    }
+
+
+
+    async function uploadPdfFile(file) {
+
+      showPdfLoading(true);
+
+      const fd = new FormData();
+
+      fd.append('file', file);
+
+
+
+      try {
+
+        const resp = await fetch('/api/extract', { method: 'POST', body: fd });
+
+        const res = await resp.json();
+
+        if (res.success && res.is_packet) {
+
+          handlePacketLoaded(res);
+
+        } else if (res.success && !res.is_packet && res.data) {
+
+          handleSingleW2Loaded(res.data);
+
+        } else {
+
+          showBuildNotification('PDF Extraction Error', res.error || 'Unknown error', 'error');
+
+          showPdfLoading(false);
+
+        }
+
+      } catch (err) {
+
+        showBuildNotification('Upload Failed', err.message, 'error');
+
+        showPdfLoading(false);
+
+      }
+
+    }
+
+
+
+    // -------------------------------------------------------------------------
+
+    // ZOHO CREATOR FIELD MAPPING UTILS (FULL IMPLEMENTATION)
+
+    // -------------------------------------------------------------------------
+
+    async function fetchAllMetaAndDrakeFields() {
+
+      try {
+
+        // 1. Resolve module metadata dynamically
+
+        const modResp = await fetch(`/api/module/info?type=${encodeURIComponent(currentModuleType)}`);
+
+        const modRes = await modResp.json();
+
+        if (modRes.success && modRes.module) {
+
+          currentActiveForm = modRes.module.form_link_name;
+
+          currentModuleType = modRes.module.type;
+
+          currentDrakeScreen = modRes.module.drake_screen;
+
+          const screenTitle = document.getElementById('drake-screen-title');
+
+          if (screenTitle) {
+
+            screenTitle.textContent = `Drake Tax Target Fields (${currentDrakeScreen})`;
+
+          }
+
+        }
+
+
+
+        // 2. Load all forms into selector
+
+        await loadMetaForms();
+
+
+
+        // 3. Load fields & mappings dynamically for this module
+
+        await loadMetaFieldsForForm(currentActiveForm, currentModuleType);
+
+        await loadDrakeFields(currentModuleType);
+
+        await loadSavedMappings(currentModuleType);
+
+
+
+        // 4. Automatically match compatible fields by default
+
+        autoMatchFields(false);
+
+
+
+        renderMetaFields();
+
+        renderDrakeFields();
+
+        updateMappingStats();
+
+
+
+        // 5. If record_id is passed, show status
+
+        if (currentRecordId) {
+
+          showBuildNotification(
+
+            `Connected: ${modRes.module ? modRes.module.display_name : currentModuleType.toUpperCase()}`,
+
+            `Connected for Zoho Record ID: ${currentRecordId}. Review field mappings below, then click "Insert into Drake".`,
+
+            'info'
+
+          );
+
+        }
+
+      } catch (err) {
+
+        console.error('Fetch error:', err);
+
+        showBuildNotification('Connection Error', err.message, 'error');
+
+      }
+
+    }
+
+
+
+    async function loadMetaForms() {
+
+      try {
+
+        const resp = await fetch('/api/meta/forms');
+
+        const res = await resp.json();
+
+        if (res.success && res.forms) {
+
+          const select = document.getElementById('form-select');
+
+          if (select) {
+
+            select.innerHTML = '';
+
+            res.forms.forEach(f => {
+
+              const opt = document.createElement('option');
+
+              opt.value = f.link_name;
+
+              opt.setAttribute('data-module-type', f.module_type || 'personal');
+
+              opt.textContent = `${f.display_name} (${f.link_name})`;
+
+              if (f.link_name === currentActiveForm || (f.module_type && f.module_type === currentModuleType)) {
+
+                opt.selected = true;
+
+                currentActiveForm = f.link_name;
+
+              }
+
+              select.appendChild(opt);
+
+            });
+
+          }
+
+        }
+
+      } catch (e) { console.warn(e); }
+
+    }
+
+
+
+    async function loadMetaFieldsForForm(formName, moduleType) {
+
+      const typeParam = moduleType ? `&type=${encodeURIComponent(moduleType)}` : '';
+
+      const resp = await fetch(`/api/meta/fields?form=${encodeURIComponent(formName)}${typeParam}`);
+
+      const res = await resp.json();
+
+      if (!res.success) throw new Error(res.error || 'Failed to load form fields');
+
+      currentActiveForm = formName;
+
+      currentFlattenedFields = res.flattened_fields || res.raw_fields || [];
+
+      document.getElementById('meta-fields-badge').textContent = `${currentFlattenedFields.length} Fields`;
+
+    }
+
+
+
+    async function loadDrakeFields(moduleType) {
+
+      const resp = await fetch(`/api/drake/fields?type=${encodeURIComponent(moduleType || currentModuleType)}`);
+
+      const res = await resp.json();
+
+      if (!res.success) throw new Error(res.error || 'Failed to load Drake fields');
+
+      currentDrakeFields = res.fields || [];
+
+      if (res.module && res.module.drake_screen) {
+
+        currentDrakeScreen = res.module.drake_screen;
+
+        const screenTitle = document.getElementById('drake-screen-title');
+
+        if (screenTitle) {
+
+          screenTitle.textContent = `Drake Tax Target Fields (${currentDrakeScreen})`;
+
+        }
+
+      }
+
+      document.getElementById('drake-fields-badge').textContent = `${currentDrakeFields.length} Fields`;
+
+      document.getElementById('stat-drake-total').textContent = currentDrakeFields.length;
+
+    }
+
+
+
+    async function loadSavedMappings(moduleType) {
+
+      try {
+
+        const resp = await fetch(`/api/field-mapping?type=${encodeURIComponent(moduleType || currentModuleType)}`);
+
+        const res = await resp.json();
+
+        if (res.success && res.mappings) {
+
+          activeMappings = res.mappings;
+
+        }
+
+      } catch (e) {}
+
+    }
+
+
+
+    function autoMatchFields(notifyUser = false) {
+
+      let matchCount = 0;
+
+      currentFlattenedFields.forEach(f => {
+
+        if (f.type === 21 && !f.parent_subform) return;
+
+
+
+        const effectiveKey = f.full_link_name || f.link_name;
+
+        const bareKey = f.link_name;
+
+        const disp = (f.display_label || f.display_name || '').toLowerCase();
+
+        const keyLow = effectiveKey.toLowerCase();
+
+        const bareLow = (bareKey || '').toLowerCase();
+
+
+
+        const existingDrakeId = activeMappings[effectiveKey] || (bareKey && activeMappings[bareKey]);
+
+        if (existingDrakeId) {
+
+          activeMappings[effectiveKey] = existingDrakeId;
+
+          if (bareKey) activeMappings[bareKey] = existingDrakeId;
+
+          return;
+
+        }
+
+
+
+        let matchedDrakeId = null;
+
+
+
+        if (currentModuleType === 'dependent' || keyLow.includes('dependent')) {
+
+          if (keyLow.includes('name') || disp.includes('name') || bareLow.includes('name')) {
+
+            matchedDrakeId = 'dependent.first_name';
+
+          } else if (keyLow.includes('ssn') || keyLow.includes('itin') || disp.includes('security') || disp.includes('itin') || bareLow.includes('ssn')) {
+
+            matchedDrakeId = 'dependent.ssn';
+
+          } else if (keyLow.includes('dob') || keyLow.includes('birth') || disp.includes('birth')) {
+
+            matchedDrakeId = 'dependent.dob';
+
+          } else if (keyLow.includes('relat') || disp.includes('relat')) {
+
+            matchedDrakeId = 'dependent.relationship';
+
+          } else if (keyLow.includes('month') || keyLow.includes('mos') || disp.includes('home')) {
+
+            matchedDrakeId = 'dependent.months_in_home';
+
+          } else if (keyLow.includes('notes') || disp.includes('notes')) {
+
+            matchedDrakeId = 'notes_to_preparer';
+
+          }
+
+        } else {
+
+          // Primary Taxpayer
+
+          if (keyLow.includes('filing_status') || disp.includes('filing status')) {
+
+            matchedDrakeId = 'taxpayer.filing_status';
+
+          } else if (keyLow.includes('taxpayer_first') || (disp.includes('first name') && !disp.includes('spouse'))) {
+
+            matchedDrakeId = 'taxpayer.first_name';
+
+          } else if (keyLow.includes('taxpayer_middle') || (disp.includes('middle') && !disp.includes('spouse'))) {
+
+            matchedDrakeId = 'taxpayer.mi';
+
+          } else if (keyLow.includes('taxpayer_last') || (disp.includes('last name') && !disp.includes('spouse'))) {
+
+            matchedDrakeId = 'taxpayer.last_name';
+
+          } else if (keyLow.includes('taxpayer_ssn') || (disp.includes('ssn') && !disp.includes('spouse'))) {
+
+            matchedDrakeId = 'taxpayer.ssn';
+
+          } else if (keyLow.includes('taxpayer_dob') || (disp.includes('date of birth') && !disp.includes('spouse'))) {
+
+            matchedDrakeId = 'taxpayer.dob';
+
+          } else if (keyLow.includes('taxpayer_occup') || (disp.includes('occupation') && !disp.includes('spouse'))) {
+
+            matchedDrakeId = 'taxpayer.occupation';
+
+          } else if (keyLow.includes('taxpayer_main_phone') || (disp.includes('daytime') || disp.includes('main phone'))) {
+
+            matchedDrakeId = 'taxpayer.phone';
+
+          } else if (keyLow.includes('taxpayer_other_phone') || disp.includes('other phone') || disp.includes('cell')) {
+
+            matchedDrakeId = 'taxpayer.other_phone';
+
+          } else if (keyLow.includes('taxpayer_email') || (disp.includes('email') && !disp.includes('spouse'))) {
+
+            matchedDrakeId = 'taxpayer.email';
+
+          }
+
+          // Spouse
+
+          else if (keyLow.includes('spouse_first') || (disp.includes('first name') && disp.includes('spouse'))) {
+
+            matchedDrakeId = 'spouse.first_name';
+
+          } else if (keyLow.includes('spouse_middle') || (disp.includes('middle') && disp.includes('spouse'))) {
+
+            matchedDrakeId = 'spouse.mi';
+
+          } else if (keyLow.includes('spouse_last') || (disp.includes('last name') && disp.includes('spouse'))) {
+
+            matchedDrakeId = 'spouse.last_name';
+
+          } else if (keyLow.includes('spouse_ssn') || (disp.includes('ssn') && disp.includes('spouse'))) {
+
+            matchedDrakeId = 'spouse.ssn';
+
+          } else if (keyLow.includes('spouse_dob') || (disp.includes('date of birth') && disp.includes('spouse'))) {
+
+            matchedDrakeId = 'spouse.dob';
+
+          } else if (keyLow.includes('spouse_occup') || (disp.includes('occupation') && disp.includes('spouse'))) {
+
+            matchedDrakeId = 'spouse.occupation';
+
+          } else if (keyLow.includes('spouse_main_phone') || (disp.includes('phone') && disp.includes('spouse'))) {
+
+            matchedDrakeId = 'spouse.phone';
+
+          } else if (keyLow.includes('spouse_other_phone')) {
+
+            matchedDrakeId = 'spouse.other_phone';
+
+          } else if (keyLow.includes('spouse_email') || (disp.includes('email') && disp.includes('spouse'))) {
+
+            matchedDrakeId = 'spouse.email';
+
+          }
+
+          // Address
+
+          else if (keyLow.includes('mailing_address') || keyLow.includes('street') || disp.includes('street') || disp.includes('address')) {
+
+            matchedDrakeId = 'address.street';
+
+          } else if (keyLow === 'city' || disp === 'city' || bareLow === 'city') {
+
+            matchedDrakeId = 'address.city';
+
+          } else if (keyLow.includes('state') || disp.includes('state') || bareLow.includes('state')) {
+
+            matchedDrakeId = 'address.state';
+
+          } else if (keyLow.includes('zip') || disp.includes('zip') || bareLow.includes('zip')) {
+
+            matchedDrakeId = 'address.zip';
+
+          }
+
+          // Bank
+
+          else if (keyLow.includes('bank_name') || disp.includes('bank name')) {
+
+            matchedDrakeId = 'bank.bank_name';
+
+          } else if (keyLow.includes('account_type') || disp.includes('account type')) {
+
+            matchedDrakeId = 'bank.account_type';
+
+          } else if (keyLow.includes('routing') || disp.includes('routing')) {
+
+            matchedDrakeId = 'bank.routing';
+
+          } else if (keyLow.includes('account_number') || disp.includes('account number')) {
+
+            matchedDrakeId = 'bank.account_number';
+
+          }
+
+          // Residency
+
+          else if (keyLow.includes('residential_status') || disp.includes('residential')) {
+
+            matchedDrakeId = 'residency.residential_status';
+
+          } else if (keyLow.includes('2025')) {
+
+            matchedDrakeId = 'residency.days_2025';
+
+          } else if (keyLow.includes('2024')) {
+
+            matchedDrakeId = 'residency.days_2024';
+
+          } else if (keyLow.includes('2023')) {
+
+            matchedDrakeId = 'residency.days_2023';
+
+          }
+
+        }
+
+
+
+        if (!matchedDrakeId) {
+
+          for (const df of currentDrakeFields) {
+
+            const dLabel = df.label.toLowerCase();
+
+            const dId = df.id.toLowerCase();
+
+            if (disp === dLabel || bareLow === dId.split('.').pop()) {
+
+              matchedDrakeId = df.id;
+
+              break;
+
+            }
+
+          }
+
+        }
+
+
+
+        if (matchedDrakeId) {
+
+          activeMappings[effectiveKey] = matchedDrakeId;
+
+          if (bareKey) activeMappings[bareKey] = matchedDrakeId;
+
+          matchCount++;
+
+        }
+
+      });
+
+
+
+      if (notifyUser && matchCount > 0) {
+
+        showBuildNotification('Auto-Map Complete', `Matched ${matchCount} fields using semantic matching!`, 'success');
+
+      }
+
+    }
+
+
+
+    function renderMetaFields() {
+
+      const container = document.getElementById('meta-fields-container');
+
+      if (!container) return;
+
+
+
+      const searchTerm = (document.getElementById('meta-search-input')?.value || '').toLowerCase().trim();
+
+
+
+      const filtered = currentFlattenedFields.filter(f => {
+
+        const name = (f.display_label || f.display_name || '').toLowerCase();
+
+        const key = (f.full_link_name || f.link_name || '').toLowerCase();
+
+        return !searchTerm || name.includes(searchTerm) || key.includes(searchTerm);
+
+      });
+
+
+
+      if (filtered.length === 0) {
+
+        container.innerHTML = '<div class="text-center py-12 text-slate-400 text-xs">No fields match filter.</div>';
+
+        return;
+
+      }
+
+
+
+      container.innerHTML = '';
+
+      filtered.forEach(f => {
+
+        if (f.type === 21 && !f.parent_subform) {
+
+          const header = document.createElement('div');
+
+          header.className = 'mt-2 mb-1 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 flex items-center justify-between shadow-xs';
+
+          header.innerHTML = `
+
+            <span class="flex items-center gap-1.5">
+
+              <i class="fa-solid fa-table-cells-large text-blue-600"></i> ${f.display_name || f.link_name}
+
+            </span>
+
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-200/70 text-blue-900">SubForm</span>
+
+          `;
+
+          container.appendChild(header);
+
+          return;
+
+        }
+
+
+
+        const effectiveKey = f.full_link_name || f.link_name;
+
+        const bareKey = f.link_name;
+
+        const mappedDrakeId = activeMappings[effectiveKey] || (bareKey ? activeMappings[bareKey] : null);
+
+        const isMapped = Boolean(mappedDrakeId);
+
+        if (isMapped && !activeMappings[effectiveKey]) {
+
+          activeMappings[effectiveKey] = mappedDrakeId;
+
+        }
+
+
+
+        const mappedDrakeField = isMapped ? currentDrakeFields.find(d => d.id === mappedDrakeId) : null;
+
+        const isSelected = selectedMetaField && (selectedMetaField.full_link_name || selectedMetaField.link_name) === effectiveKey;
+
+
+
+        const card = document.createElement('div');
+
+        card.onclick = () => onSelectMetaField(f);
+
+        card.className = `p-2.5 rounded-lg border transition cursor-pointer text-xs flex flex-col gap-1 ${
+
+          isSelected 
+
+            ? 'card-selected' 
+
+            : isMapped 
+
+              ? 'bg-emerald-50/40 border-emerald-300 hover:border-emerald-400' 
+
+              : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+
+        }`;
+
+
+
+        card.innerHTML = `
+
+          <div class="flex items-center justify-between gap-2">
+
+            <span class="font-bold text-slate-800 truncate text-xs">
+
+              ${f.display_label || f.display_name || effectiveKey}
+
+            </span>
+
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 shrink-0">
+
+              ${f.type === 10 ? 'Date' : 'Field'}
+
+            </span>
+
+          </div>
+
+
+
+          <div class="flex items-center justify-between gap-2 text-[11px]">
+
+            <span class="font-mono text-slate-400 text-[10px] truncate max-w-[180px]">${effectiveKey}</span>
+
+            ${isMapped 
+
+              ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 shrink-0">
+
+                   <i class="fa-solid fa-check text-[9px]"></i>
+
+                   <span class="truncate max-w-[140px]">${mappedDrakeField?.label || mappedDrakeId}</span>
+
+                   <button onclick="unmapMetaField('${effectiveKey}', event)" title="Remove mapping" class="hover:text-red-600 ml-0.5 text-slate-400 font-bold">&times;</button>
+
+                 </span>`
+
+              : `<span class="text-slate-400 text-[10px] italic">Unmapped</span>`
+
+            }
+
+          </div>
+
+        `;
+
+
+
+        container.appendChild(card);
+
+      });
+
+    }
+
+
+
+    function renderDrakeFields() {
+
+      const container = document.getElementById('drake-fields-container');
+
+      if (!container) return;
+
+
+
+      const searchTerm = (document.getElementById('drake-search-input')?.value || '').toLowerCase().trim();
+
+
+
+      const drakeToZoho = {};
+
+      for (const [zKey, dId] of Object.entries(activeMappings)) {
+
+        if (!drakeToZoho[dId] || zKey.includes('.')) {
+
+          drakeToZoho[dId] = zKey;
+
+        }
+
+      }
+
+
+
+      const grouped = {};
+
+      currentDrakeFields.forEach(f => {
+
+        const matches = !searchTerm || f.label.toLowerCase().includes(searchTerm) || f.id.toLowerCase().includes(searchTerm) || f.section.toLowerCase().includes(searchTerm);
+
+        if (!matches) return;
+
+        if (!grouped[f.section]) grouped[f.section] = [];
+
+        grouped[f.section].push(f);
+
+      });
+
+
+
+      const sectionKeys = Object.keys(grouped);
+
+      if (sectionKeys.length === 0) {
+
+        container.innerHTML = '<div class="text-center py-12 text-slate-400 text-xs">No Drake fields match filter.</div>';
+
+        return;
+
+      }
+
+
+
+      container.innerHTML = '';
+
+      sectionKeys.forEach(secName => {
+
+        const secDiv = document.createElement('div');
+
+        secDiv.className = 'space-y-1.5';
+
+
+
+        const screenName = grouped[secName][0]?.screen || currentDrakeScreen || 'Screen 1';
+
+        secDiv.innerHTML = `
+
+          <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+
+            <span class="font-bold text-xs text-slate-800">${secName}</span>
+
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600">${screenName}</span>
+
+          </div>
+
+          <div class="space-y-1.5 pl-1" id="sec-fields-${secName.replace(/[^a-zA-Z0-9_]/g, '_')}"></div>
+
+        `;
+
+
+
+        const secFieldsContainer = secDiv.querySelector(`#sec-fields-${secName.replace(/[^a-zA-Z0-9_]/g, '_')}`);
+
+
+
+        grouped[secName].forEach(f => {
+
+          const mappedZohoKey = drakeToZoho[f.id];
+
+          const isMapped = Boolean(mappedZohoKey);
+
+
+
+          let mappedZohoDisplay = mappedZohoKey || '';
+
+          if (isMapped) {
+
+            const foundMeta = currentFlattenedFields.find(m => (m.full_link_name || m.link_name) === mappedZohoKey || m.link_name === mappedZohoKey);
+
+            if (foundMeta) {
+
+              mappedZohoDisplay = foundMeta.display_label || foundMeta.display_name || mappedZohoKey;
+
+            }
+
+          }
+
+
+
+          const card = document.createElement('div');
+
+          card.onclick = () => onSelectDrakeField(f);
+
+          card.className = `p-2.5 rounded-lg border transition cursor-pointer text-xs flex flex-col gap-1 ${
+
+            isMapped 
+
+              ? 'bg-emerald-50/40 border-emerald-300 hover:border-emerald-500' 
+
+              : selectedMetaField 
+
+                ? 'bg-white border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50/30' 
+
+                : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-slate-50'
+
+          }`;
+
+
+
+          card.innerHTML = `
+
+            <div class="flex items-center justify-between gap-2">
+
+              <span class="font-bold text-slate-900 truncate text-xs">
+
+                ${f.label} ${f.required ? '<span class="text-red-500">*</span>' : ''}
+
+              </span>
+
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 shrink-0">
+
+                ${f.type}
+
+              </span>
+
+            </div>
+
+
+
+            <div class="flex items-center justify-between gap-2 text-[11px]">
+
+              <span class="font-mono text-slate-400 text-[10px] truncate max-w-[150px]">${f.id}</span>
+
+              ${isMapped 
+
+                ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 shrink-0">
+
+                     <i class="fa-solid fa-check text-[9px]"></i>
+
+                     <span class="truncate max-w-[140px]">${mappedZohoDisplay}</span>
+
+                     <button onclick="unmapDrakeField('${f.id}', event)" title="Remove mapping" class="hover:text-red-600 ml-1 text-slate-400 font-bold">&times;</button>
+
+                   </span>`
+
+                : selectedMetaField 
+
+                  ? `<span class="text-blue-600 font-bold text-[10px] animate-pulse">+ Click to map</span>`
+
+                  : `<span class="text-slate-400 text-[10px] italic">Unassigned</span>`
+
+              }
+
+            </div>
+
+          `;
+
+
+
+          secFieldsContainer.appendChild(card);
+
+        });
+
+
+
+        container.appendChild(secDiv);
+
+      });
+
+    }
+
+
+
+    function onSelectMetaField(field) {
+
+      if (field.type === 21 && !field.parent_subform) return;
+
+      const key = field.full_link_name || field.link_name;
+
+      if (selectedMetaField && (selectedMetaField.full_link_name || selectedMetaField.link_name) === key) {
+
+        selectedMetaField = null;
+
+        updateSelectionHelper(null);
+
+      } else {
+
+        selectedMetaField = field;
+
+        updateSelectionHelper(field);
+
+      }
+
+      renderMetaFields();
+
+      renderDrakeFields();
+
+    }
+
+
+
+    function onSelectDrakeField(drakeField) {
+
+      if (selectedMetaField) {
+
+        const metaKey = selectedMetaField.full_link_name || selectedMetaField.link_name;
+
+        const bareKey = selectedMetaField.link_name;
+
+        
+
+        for (const [k, d] of Object.entries(activeMappings)) {
+
+          if (d === drakeField.id) delete activeMappings[k];
+
+        }
+
+
+
+        activeMappings[metaKey] = drakeField.id;
+
+        if (bareKey) activeMappings[bareKey] = drakeField.id;
+
+
+
+        selectedMetaField = null;
+
+        updateSelectionHelper(null);
+
+
+
+        renderMetaFields();
+
+        renderDrakeFields();
+
+        updateMappingStats();
+
+      } else {
+
+        const mappedSource = Object.keys(activeMappings).find(k => activeMappings[k] === drakeField.id);
+
+        if (mappedSource) {
+
+          delete activeMappings[mappedSource];
+
+          renderMetaFields();
+
+          renderDrakeFields();
+
+          updateMappingStats();
+
+        }
+
+      }
+
+    }
+
+
+
+    function unmapMetaField(metaKey, evt) {
+
+      if (evt) evt.stopPropagation();
+
+      delete activeMappings[metaKey];
+
+      renderMetaFields();
+
+      renderDrakeFields();
+
+      updateMappingStats();
+
+    }
+
+
+
+    function unmapDrakeField(drakeId, evt) {
+
+      if (evt) evt.stopPropagation();
+
+      for (const [k, v] of Object.entries(activeMappings)) {
+
+        if (v === drakeId) delete activeMappings[k];
+
+      }
+
+      renderMetaFields();
+
+      renderDrakeFields();
+
+      updateMappingStats();
+
+    }
+
+
+
+    function updateSelectionHelper(field) {
+
+      const helper = document.getElementById('selection-helper-text');
+
+      if (!helper) return;
+
+      if (field) {
+
+        const name = field.display_label || field.display_name || field.full_link_name || field.link_name;
+
+        helper.innerHTML = `<span class="text-blue-700 font-bold">Selected: "${name}"</span> &rarr; Click any Drake field on the right to assign.`;
+
+      } else {
+
+        helper.innerHTML = 'Click a Meta field on the left &rarr; then click a Drake field on the right to connect.';
+
+      }
+
+    }
+
+
+
+    function updateMappingStats() {
+
+      const mappedCount = Object.keys(activeMappings).length;
+
+      const total = currentDrakeFields.length || 33;
+
+      const pct = Math.min(100, Math.round((mappedCount / total) * 100));
+
+      const countEl = document.getElementById('stat-mapped-count');
+
+      const totalEl = document.getElementById('stat-drake-total');
+
+      const pctEl = document.getElementById('stat-percentage-text');
+
+      const barEl = document.getElementById('stat-progress-bar');
+
+
+
+      if (countEl) countEl.textContent = mappedCount;
+
+      if (totalEl) totalEl.textContent = total;
+
+      if (pctEl) pctEl.textContent = `${pct}% Complete`;
+
+      if (barEl) barEl.style.width = `${pct}%`;
+
+    }
+
+
+
+    async function autoSuggestMappings() {
+
+      try {
+
+        const resp = await fetch('/api/field-mapping/auto-suggest', {
+
+          method: 'POST',
+
+          headers: { 'Content-Type': 'application/json' },
+
+          body: JSON.stringify({ form: currentActiveForm, type: currentModuleType })
+
+        });
+
+        const res = await resp.json();
+
+        if (res.success && res.mappings) {
+
+          activeMappings = { ...activeMappings, ...res.mappings };
+
+          renderMetaFields();
+
+          renderDrakeFields();
+
+          updateMappingStats();
+
+          showBuildNotification('Auto-Map Complete', `Successfully auto-mapped ${Object.keys(res.mappings).length} fields!`, 'success');
+
+        }
+
+      } catch (e) {
+
+        showBuildNotification('Auto-Map Error', e.message, 'error');
+
+      }
+
+    }
+
+
+
+    async function saveFieldMappings() {
+
+      try {
+
+        const resp = await fetch('/api/field-mapping', {
+
+          method: 'POST',
+
+          headers: { 'Content-Type': 'application/json' },
+
+          body: JSON.stringify({ mappings: activeMappings, type: currentModuleType })
+
+        });
+
+        const res = await resp.json();
+
+        if (res.success) {
+
+          showBuildNotification('Field Mappings Saved', 'Your field mappings have been persisted successfully.', 'success');
+
+        } else {
+
+          showBuildNotification('Error Saving Mappings', res.error || 'Failed to save', 'error');
+
+        }
+
+      } catch (e) {
+
+        showBuildNotification('Save Failed', e.message, 'error');
+
+      }
+
+    }
+
+
+
+    let drakeAbortController = null;
+
+
+
+    async function executeInsertIntoDrake() {
+
+      const recordId = currentRecordId || (currentModuleType === 'dependent' ? '266830000014776584' : '266830000014689319');
+
+      const btn = document.getElementById('btn-insert-drake');
+
+      const stopBtn = document.getElementById('btn-stop-drake');
+
+      const orig = btn.innerHTML;
+
+      btn.disabled = true;
+
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Inserting into Drake...';
+
+
+
+      if (stopBtn) {
+
+        stopBtn.classList.remove('hidden');
+
+        stopBtn.disabled = false;
+
+        stopBtn.innerHTML = '<i class="fa-solid fa-circle-stop text-sm"></i><span>Stop Automation</span>';
+
+      }
+
+
+
+      showBuildNotification('Inserting Data into Drake...', `Automating navigation to Drake Tax 2025 for ${currentDrakeScreen}...`, 'info');
+
+
+
+      drakeAbortController = new AbortController();
+
+
+
+      try {
+
+        const resp = await fetch('/api/field-mapping/insert-into-drake', {
+
+          method: 'POST',
+
+          headers: { 'Content-Type': 'application/json' },
+
+          signal: drakeAbortController.signal,
+
+          body: JSON.stringify({
+
+            type: currentModuleType,
+
+            record_id: recordId,
+
+            mappings: activeMappings
+
+          })
+
+        });
+
+        const res = await resp.json();
+
+
+
+        if (res.success) {
+
+          showBuildNotification(
+
+            'Successfully Inserted into Drake Tax 2025!',
+
+            res.message || `Data populated into Drake Tax (${currentDrakeScreen}). Review on desktop.`,
+
+            'success'
+
+          );
+
+        } else if (res.status === 'STOPPED') {
+
+          showBuildNotification('Automation Stopped', 'Drake automation was safely stopped.', 'warning');
+
+        } else {
+
+          showBuildNotification('Drake Entry Notification', res.error || res.message || 'Please ensure Drake 2025 is running.', 'warning');
+
+        }
+
+      } catch (err) {
+
+        if (err.name === 'AbortError') {
+
+          showBuildNotification('Automation Stopped', 'Drake automation request was cancelled.', 'warning');
+
+        } else {
+
+          showBuildNotification('Connection Error', 'Failed to reach Drake automation engine: ' + err.message, 'error');
+
+        }
+
+      } finally {
+
+        btn.disabled = false;
+
+        btn.innerHTML = orig;
+
+        if (stopBtn) stopBtn.classList.add('hidden');
+
+        drakeAbortController = null;
+
+      }
+
+    }
+
+
+
+    async function stopDrakeAutomation() {
+
+      const stopBtn = document.getElementById('btn-stop-drake');
+
+      if (stopBtn) {
+
+        stopBtn.disabled = true;
+
+        stopBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Stopping...';
+
+      }
+
+      showBuildNotification('Stopping Automation...', 'Sending stop signal to Drake Tax...', 'warning');
+
+
+
+      try {
+
+        await fetch('/api/automation/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+
+      } catch (e) {}
+
+
+
+      if (drakeAbortController) {
+
+        try { drakeAbortController.abort(); } catch (e) {}
+
+      }
+
+
+
+      setTimeout(() => {
+
+        if (stopBtn) {
+
+          stopBtn.disabled = false;
+
+          stopBtn.classList.add('hidden');
+
+        }
+
+        const insertBtn = document.getElementById('btn-insert-drake');
+
+        if (insertBtn) insertBtn.disabled = false;
+
+      }, 600);
+
+    }
+
+
+
+    function onFormSelected() {
+
+      const select = document.getElementById('form-select');
+
+      const opt = select.options[select.selectedIndex];
+
+      const formName = opt.value;
+
+      const modType = opt.getAttribute('data-module-type') || 'personal';
+
+
+
+      currentActiveForm = formName;
+
+      currentModuleType = modType;
+
+
+
+      loadMetaFieldsForForm(currentActiveForm, currentModuleType)
+
+        .then(() => loadDrakeFields(currentModuleType))
+
+        .then(() => loadSavedMappings(currentModuleType))
+
+        .then(() => {
+
+          autoMatchFields(false);
+
+          renderMetaFields();
+
+          renderDrakeFields();
+
+          updateMappingStats();
+
+        });
+
+    }
+
+
+
+        // Global override to guarantee no browser native alert popup ever appears
+    window.alert = function(msg) {
+      const isSuccess = /success|populated|reconciled|ready/i.test(msg);
+      const isError = /error|failed/i.test(msg);
+      const isWarning = /notice|warning|check/i.test(msg);
+      const type = isSuccess ? 'success' : (isError ? 'error' : (isWarning ? 'warning' : 'info'));
+      showBuildNotification(isSuccess ? 'Success' : (isError ? 'Error' : 'Notice'), String(msg), type);
+    };
+
+    function showBuildNotification(title, message, type = 'info') {
+      const container = document.getElementById('build-notification-container');
+      const box = document.getElementById('build-notification-box');
+      const icon = document.getElementById('build-notif-icon');
+      const titleEl = document.getElementById('build-notif-title');
+      const msgEl = document.getElementById('build-notif-message');
+
+      if (!container || !box) return;
+
+      titleEl.textContent = title;
+      msgEl.textContent = message;
+
+      if (type === 'success') {
+        box.className = 'p-4 rounded-xl border bg-emerald-50 border-emerald-300 text-emerald-950 flex items-start justify-between gap-3 shadow-md text-xs transition-all';
+        icon.className = 'w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm shrink-0 shadow';
+        icon.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+      } else if (type === 'warning') {
+        box.className = 'p-4 rounded-xl border bg-amber-50 border-amber-300 text-amber-950 flex items-start justify-between gap-3 shadow-md text-xs transition-all';
+        icon.className = 'w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center text-sm shrink-0 shadow';
+        icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+      } else if (type === 'error') {
+        box.className = 'p-4 rounded-xl border bg-rose-50 border-rose-300 text-rose-950 flex items-start justify-between gap-3 shadow-md text-xs transition-all';
+        icon.className = 'w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center text-sm shrink-0 shadow';
+        icon.innerHTML = '<i class="fa-solid fa-circle-xmark"></i>';
+      } else {
+        box.className = 'p-4 rounded-xl border bg-blue-50 border-blue-300 text-blue-950 flex items-start justify-between gap-3 shadow-md text-xs transition-all';
+        icon.className = 'w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-sm shrink-0 shadow';
+        icon.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+      }
+
+      container.classList.remove('hidden');
+      container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      // Auto dismiss after 8 seconds
+      clearTimeout(window._buildNotifTimer);
+      window._buildNotifTimer = setTimeout(() => {
+        closeBuildNotification();
+      }, 8000);
+    }
+
+
+
+    function closeBuildNotification() {
+
+      const container = document.getElementById('build-notification-container');
+
+      if (container) container.classList.add('hidden');
+
+    }
+
+  </script>
+
+</body>
+
+</html>
+

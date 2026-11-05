@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W-2 to Drake Mapping</title>
+<script src="/static/vendor/pdfjs/pdf.min.js"></script>
+<script>window.pdfjsLib || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>');</script>
+<style>
+:root{
+  --bg:#e9edf3; --line:#dde3ec; --line2:#c9d1dd; --ink:#111827; --ink2:#4b5563; --ink3:#8a93a3;
+  --accent:#2f5bea; --accent-soft:#e8eefe; --ok:#16a34a; --ok-soft:#e7f7ec; --warn:#d97706; --warn-soft:#fff4e0; --bad:#dc2626; --bad-soft:#fdecec;
+  --mono:Consolas,"Courier New",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:13px;display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;cursor:pointer}
+[hidden]{display:none!important}
+.btn{border:1px solid var(--line2);background:#fff;color:var(--ink);border-radius:6px;padding:4px 10px;font-weight:600;display:inline-flex;gap:6px;align-items:center;white-space:nowrap;font-size:12.5px}
+.btn:hover{background:#f6f8fb}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.primary:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--ink2)}
+.btn.icon{padding:3px 8px}.btn.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+
+/* ---------------- app chrome ---------------- */
+.bar{flex:0 0 auto;height:42px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#fff;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;white-space:nowrap}
+.brand .mark{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#2f5bea,#5b8cff);color:#fff;display:grid;place-items:center;font-size:9.5px;font-weight:800}
+.file{color:var(--ink2);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+select.w2sel{border:1px solid var(--line2);border-radius:6px;padding:3px 6px;font:inherit;font-size:12px;max-width:240px}
+.sp{flex:1}
+.dstat{display:flex;align-items:center;gap:7px;min-width:0;max-width:380px}
+.ldot{width:9px;height:9px;border-radius:50%;background:#b8c0cc;flex:0 0 auto}.ldot.on{background:var(--ok)}.ldot.warn{background:var(--warn)}
+.dstat .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seg{display:flex;background:#eef1f6;border-radius:7px;padding:2px}
+.seg button{border:0;background:transparent;padding:3px 10px;border-radius:5px;font-weight:600;color:var(--ink2);font-size:12px;white-space:nowrap}
+.seg button.on{background:#fff;color:var(--accent);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+main{flex:1 1 auto;display:flex;min-height:0;padding:8px}
+.pane{position:relative;background:#fff;border:1px solid var(--line);border-radius:9px;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+#pdfPane{flex:0 0 var(--split,40%)}
+#rightPane{flex:1 1 auto}
+#pdfPane,#rightPane{overflow:clip}
+#split{flex:0 0 10px;cursor:col-resize;display:flex;align-items:center;justify-content:center}
+#split::after{content:"";width:4px;height:44px;border-radius:3px;background:#c3cad6}
+#split:hover::after,#split.drag::after{background:var(--accent)}
+.ptools{position:absolute;top:8px;right:10px;z-index:6;display:flex;gap:3px;align-items:center;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:7px;padding:3px;box-shadow:0 2px 8px rgba(16,24,40,.08)}
+.ptools .lbl{color:var(--ink3);font-size:11.5px;padding:0 6px;white-space:nowrap}
+.ptools .btn{padding:2px 8px;font-size:12px;border-color:transparent}
+#pdfScroll{flex:1;overflow:auto;background:#dfe4eb;padding:8px}
+#pdfStage{position:relative;margin:0 auto;background:#fff;box-shadow:0 2px 12px rgba(16,24,40,.14);overflow:hidden}
+#pdfInner{position:absolute;left:0;top:0}
+#pdfCanvas{display:block}
+#pdfOverlay{position:absolute;inset:0}
+.rhead{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tabs{display:flex;background:#eef1f6;border-radius:7px;padding:2px}
+.tabs button{border:0;background:transparent;padding:3px 10px;border-radius:5px;font-weight:600;color:var(--ink2);font-size:12px;white-space:nowrap}
+.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.legend{display:flex;gap:9px;color:var(--ink3);font-size:11.5px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.client{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);background:#f8fafc;font-size:12px;color:var(--ink2);flex-wrap:wrap}
+.client b{color:var(--ink)}
+.client .cf{position:relative;display:inline-flex}
+.client input{height:22px;border:1px solid #c3c5ca;border-radius:2px;font-family:var(--mono);font-size:12px;padding:1px 5px;text-transform:uppercase;background:#fff;outline:none}
+.client input:focus{border-color:#2f5bea}
+body.hl .client .s-ok input{border-color:#34a853;box-shadow:inset 0 0 0 1px #34a853}
+body.hl .client .s-edited input{border-color:#2f5bea;box-shadow:inset 0 0 0 1px #2f5bea}
+body.hl .client .s-error input,body.hl .client .s-missing input{border-color:#dc2626;box-shadow:inset 0 0 0 1px #dc2626}
+.client .hot input{background:#fff7b0;border-color:#2f5bea}
+.issues{flex:0 0 auto;padding:5px 10px;font-size:12px;line-height:1.45;border-bottom:1px solid var(--line);cursor:pointer}
+.issues.ok{background:var(--ok-soft);color:#166534}.issues.warn{background:var(--warn-soft);color:#92400e}.issues.bad{background:var(--bad-soft);color:#991b1b}
+.issues ul{margin:3px 0 2px 18px;padding:0}.issues a{color:inherit}
+#formScroll{flex:1;overflow:auto;background:#e4e4e4}
+
+/* ================================================================
+   Drake Tax 2025 · Screen W2 replica — 940 × 657 design canvas,
+   every position measured from the Drake screenshot (px).
+   ================================================================ */
+#dkWrap{position:relative;margin:0}
+#dk{position:relative;width:940px;height:657px;background:#f0f0f0;font-family:"Segoe UI",Tahoma,Arial,sans-serif;font-size:10px;color:#000;transform-origin:0 0;overflow:hidden}
+#dk .t{position:absolute;white-space:nowrap;line-height:13px}
+#dk .t.b{font-weight:700}
+#dk .t.h1{font-size:12.2px;font-weight:700;line-height:16px}
+#dk .t.dots{overflow:hidden}
+#dk .t.dots::after{content:"..............................................................................................................................................................";letter-spacing:.2px;color:#444}
+#dk .t.red{color:#e00000;font-weight:700;font-size:10px}
+#dk .t.lnk{color:#2424e8;text-decoration:underline;cursor:pointer}
+#dk .t.ts{background:#ffff80;font-weight:700;padding:0 2px}
+#dk .frame{position:absolute;border:1px solid #d5d5d5;border-radius:3px;box-shadow:inset 1px 1px 0 #fff, 1px 1px 0 #fff}
+#dk .lg{position:absolute;background:#f0f0f0;padding:0 3px;line-height:13px;white-space:nowrap;color:#000}
+#dk .tabline{position:absolute;left:30px;right:0;top:23px;height:2px;border-top:1px solid #b3b4b8;border-bottom:1px solid #dedee0}
+#dk .tab{position:absolute;top:5px;height:19px;border:1px solid #b3b4b8;border-bottom:0;background:#f0f0f0;font-size:11.5px;line-height:17px;text-align:center;cursor:default}
+#dk .tab.sel{top:2px;height:23px;background:#fff;z-index:2}
+#dk .tbtn{position:absolute;left:201px;top:3px;width:88px;height:19px;border:1px solid #adadad;border-radius:3px;background:linear-gradient(#f5f5f5,#e6e6e6);font-size:12px;line-height:17px;text-align:center}
+#dk .bottomline{position:absolute;left:0;right:0;top:645px;border-top:1px solid #b8b9bc;border-bottom:1px solid #d9d9da;height:2px}
+#dk .c{position:absolute;height:18px}
+#dk .c input,#dk .c select{position:absolute;inset:0;width:100%;height:100%;margin:0;border:1px solid #c3c5ca;border-radius:0;background:#fff;
+  box-shadow:inset 1px 1px 0 #e6e6e8;font-family:"Courier New",Consolas,monospace;font-size:12.5px;font-weight:400;color:#000;padding:0 3px;outline:none;text-transform:uppercase}
+#dk .c input.amt{text-align:right;padding-right:4px}
+#dk .c select{appearance:none;-webkit-appearance:none;padding-right:18px;cursor:pointer;
+  background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='6'><path d='M.5.5 4.5 4.5 8.5.5' fill='none' stroke='%23606060'/></svg>") no-repeat right 5px center}
+#dk .c.blue input,#dk .c.blue select{background-color:#709dc4;border-color:#a3bcd3;box-shadow:none}
+#dk .c input:focus,#dk .c select:focus{border-color:#3c7fb1;box-shadow:inset 0 0 0 1px #3c7fb1}
+#dk .c.dis input{background:#f4f4f4;border-color:#d0d0d0;color:#8a8a8a;text-align:center;text-transform:none;font-size:13px;box-shadow:none;cursor:default}
+#dk .c.dis select{background-color:#f6f6f6;border-color:#dcdcdc;box-shadow:none;cursor:default}
+#dk .c.ro input{background:#f4f4f4;border-color:#dcdcdc;box-shadow:none;cursor:default}
+#dk .c input::placeholder{color:#a0a6ae;text-transform:uppercase}
+#dk .ck{position:absolute;width:13px;height:13px}
+#dk .ck input{appearance:none;-webkit-appearance:none;position:absolute;inset:0;margin:0;border:1px solid #333;border-radius:2px;background:#fff;cursor:pointer}
+#dk .ck input:checked{background:#0067c0;border-color:#0067c0}
+#dk .ck input:checked::after{content:"";position:absolute;left:3.5px;top:.5px;width:3px;height:7px;border:solid #fff;border-width:0 1.6px 1.6px 0;transform:rotate(45deg)}
+#dk .book{position:absolute;left:353px;top:574px}
+body.hl #dk .c.s-ok input,body.hl #dk .c.s-ok select{box-shadow:inset 0 0 0 1px #34a853;border-color:#34a853}
+body.hl #dk .c.s-edited input,body.hl #dk .c.s-edited select{box-shadow:inset 0 0 0 1px #2f5bea;border-color:#2f5bea}
+body.hl #dk .c.s-missing input,body.hl #dk .c.s-missing select{box-shadow:inset 0 0 0 1px #e8a317;border-color:#e8a317}
+body.hl #dk .c.s-warn input,body.hl #dk .c.s-warn select{box-shadow:inset 0 0 0 1px #e8a317;border-color:#e8a317;background-color:#fff8e6}
+body.hl #dk .c.s-error input,body.hl #dk .c.s-error select{box-shadow:inset 0 0 0 1px #dc2626;border-color:#dc2626;background-color:#fff1f1}
+body.hl #dk .c.s-sent input,body.hl #dk .c.s-sent select{box-shadow:inset 0 0 0 1px #15803d;border-color:#15803d;background-color:#e9f9ee}
+body.hl #dk .c.s-failed input,body.hl #dk .c.s-failed select{box-shadow:inset 0 0 0 2px #dc2626;border-color:#dc2626}
+body.hl #dk .ck.s-ok input{outline:2px solid #34a853;outline-offset:1px}
+body.hl #dk .ck.s-edited input{outline:2px solid #2f5bea;outline-offset:1px}
+body.hl #dk .ck.s-sent input{outline:2px solid #15803d;outline-offset:1px}
+#dk .c.hot input,#dk .c.hot select,#dk .ck.hot input{box-shadow:inset 0 0 0 2px #2f5bea!important;border-color:#2f5bea!important;background-color:#fff7b0!important}
+#dk .c.hot{z-index:3;filter:drop-shadow(0 0 5px rgba(47,91,234,.55))}
+
+.fx{position:absolute;border-radius:3px;cursor:pointer;transition:box-shadow .12s}
+.fx.m-none{border:1px dashed rgba(138,147,163,.5)}
+.fx.m-ok{border:1.5px solid rgba(22,163,74,.7);background:rgba(22,163,74,.06)}
+.fx.m-edited{border:1.5px solid rgba(47,91,234,.7);background:rgba(47,91,234,.06)}
+.fx.m-warn{border:1.5px solid rgba(217,119,6,.8);background:rgba(217,119,6,.07)}
+.fx.m-error{border:1.5px solid rgba(220,38,38,.8);background:rgba(220,38,38,.07)}
+.fx.m-sent{border:1.5px solid #15803d;background:rgba(22,163,74,.16)}
+.fx.m-ref{border:1px dashed rgba(47,91,234,.45)}
+body:not(.hl) .fx:not(.hot){border-color:transparent!important;background:transparent!important}
+.fx.hot{border:2.5px solid var(--accent)!important;background:rgba(47,91,234,.16)!important;box-shadow:0 0 0 4px rgba(47,91,234,.22),0 0 18px rgba(47,91,234,.35);z-index:3}
+
+#liveWrap{flex:1;overflow:auto;background:#d9dee6;display:flex;align-items:flex-start;justify-content:center;padding:10px;position:relative}
+#liveImg{display:block;max-width:100%;height:auto;box-shadow:0 2px 14px rgba(16,24,40,.18);pointer-events:none;user-select:none}
+#liveMsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--ink2);line-height:1.65;background:rgba(233,237,243,.96)}
+#liveMsg.show{display:flex}
+.vonly{position:absolute;left:14px;top:14px;background:rgba(17,24,39,.8);color:#fff;font-size:11px;padding:3px 8px;border-radius:6px}
+
+.mlabel{position:fixed;z-index:70;pointer-events:none;background:#111827;color:#fff;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.45;max-width:340px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:none}
+.mlabel .h{font-weight:700;display:flex;gap:6px;align-items:center}
+.mlabel .k{color:#9ca3af;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
+.mlabel .v{font-family:var(--mono)}
+.mlabel .row{margin-top:2px}
+.mlabel .st{display:inline-block;white-space:nowrap;border-radius:999px;padding:0 7px;font-size:10.5px;font-weight:700;margin-left:4px}
+.st.ok,.st.sent{background:#166534;color:#dcfce7}.st.warn,.st.missing{background:#92400e;color:#fef3c7}.st.error,.st.failed{background:#991b1b;color:#fee2e2}
+.st.edited{background:#1e3a8a;color:#dbeafe}.st.none,.st.ref{background:#374151;color:#e5e7eb}
+.mlabel::after{content:"";position:absolute;width:10px;height:10px;background:#111827;transform:rotate(45deg);left:16px}
+.mlabel.below::after{top:-5px}.mlabel.above::after{bottom:-5px}
+.scrim{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:80;display:none;align-items:center;justify-content:center;padding:24px}
+.modal{background:#fff;border-radius:14px;width:min(860px,100%);max-height:100%;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.mhead{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.mhead h3{margin:0;font-size:16px}.mhead .sub{color:var(--ink3)}
+.mbody{padding:14px 20px;overflow:auto}
+.mfoot{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.alert{border-radius:9px;padding:9px 12px;margin-bottom:10px;font-weight:500;line-height:1.45}
+.alert.ok{background:var(--ok-soft);color:#166534;border:1px solid #bfe6cb}.alert.bad{background:var(--bad-soft);color:#991b1b;border:1px solid #f5b5b5}
+table.sum{width:100%;border-collapse:collapse;font-size:12.5px}
+table.sum th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);padding:6px 8px;border-bottom:1px solid var(--line);position:sticky;top:-14px;background:#fff}
+table.sum td{padding:6px 8px;border-bottom:1px solid #f0f2f6}table.sum td.v{font-family:var(--mono)}
+.tag{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:#166534}.tag.warn{background:var(--warn-soft);color:#92400e}.tag.error{background:var(--bad-soft);color:#991b1b}.tag.edited{background:var(--accent-soft);color:var(--accent)}
+.logs{margin-top:12px;background:#0f172a;color:#cbd5e1;border-radius:9px;padding:10px 12px;font-family:var(--mono);font-size:11.5px;max-height:180px;overflow:auto;white-space:pre-wrap}
+.spinner{width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* drag-to-map arrow (only visible while mapping) */
+#arrows{position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:65;overflow:visible}
+#arrows path{fill:none;stroke:#2f5bea;stroke-width:2.5}
+#arrows .fade{transition:opacity .6s ease;opacity:0}
+body.mapping, body.mapping *{cursor:crosshair!important}
+.fx{cursor:grab}
+#dk .c.drop input,#dk .c.drop select,#dk .ck.drop input,.client .drop input{box-shadow:inset 0 0 0 2px #2f5bea!important;border-color:#2f5bea!important;background-color:#e8eefe!important}
+.fx.picked{border:2.5px solid #2f5bea!important;background:rgba(47,91,234,.18)!important;animation:pulse 1.1s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(47,91,234,.4)}50%{box-shadow:0 0 0 6px rgba(47,91,234,0)}}
+/* confirmation marks */
+.cfm{position:absolute;width:13px;height:13px;border-radius:50%;border:1.5px solid #d08a00;background:#fff;z-index:4;cursor:pointer;display:none;font:700 9px/10px Arial,sans-serif;color:#fff;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.cfm.show{display:block}
+.cfm.on{background:#15803d;border-color:#15803d}
+.cfm.on::after{content:"✓"}
+.cfm:not(.on):hover{background:#fff4d6}
+.client .cfm{position:relative;display:none;margin-left:-6px;top:-8px}
+.client .cfm.show{display:inline-block}
+body.hl #dk .c.conf input,body.hl #dk .c.conf select,body.hl .client .conf input{background-color:#f0fbf3}
+.counts{font-size:12px;color:var(--ink2);white-space:nowrap}
+.counts b{color:var(--ink)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 14px;border-radius:9px;z-index:90;font-weight:500;display:none;max-width:80vw}
+@media (max-width:1300px){.file,.legend{display:none}}
+</style>
+</head>
+<body class="hl">
+<div id="staleBar" hidden style="flex:0 0 auto;background:#fdecec;color:#991b1b;border-bottom:1px solid #f5b5b5;padding:8px 14px;font-weight:600;font-size:13px">
+  The app server is running an older version of the code, so <b>Send to Drake</b> can't work yet.
+  In the server window press <b>Ctrl+C</b>, run <code>python app.py</code> again, then reload this page.
+  <button class="btn" style="margin-left:10px" onclick="location.reload()">Reload page</button>
+</div>
+<header class="bar">
+  <div class="brand"><div class="mark">W-2</div>PDF → Drake</div>
+  <span class="file" id="fileName">Loading…</span>
+  <select class="w2sel" id="w2Select" hidden></select>
+  <label class="btn ghost"><input type="file" id="fileInput" accept="application/pdf" hidden>Upload PDF</label>
+  <div class="sp"></div>
+  <div class="dstat"><span class="ldot" id="ldot"></span><span class="t" id="ltxt">Checking Drake…</span></div>
+  <span id="sbsTools" hidden><button class="btn" id="arrangeBtn">⟲ Arrange</button> <button class="btn ghost" id="restoreBtn">Restore</button></span>
+  <div class="seg"><button id="modeA">One window</button><button id="modeB">Side-by-side with Drake</button></div>
+  <button class="btn primary" id="sendBtn">Send to Drake…</button>
+</header>
+
+<main id="main">
+  <section class="pane" id="pdfPane">
+    <div class="ptools">
+      <button class="btn icon" id="prevPage">‹</button><span class="lbl" id="pageLbl">–</span><button class="btn icon" id="nextPage">›</button>
+      <button class="btn icon" id="zoomOut">−</button><button class="btn icon" id="zoomIn">+</button>
+      <button class="btn" id="fitForm" title="Crop to the W-2 and fit it to the panel">Fit W-2</button><button class="btn" id="fitPage" title="Show the whole page">Page</button>
+    </div>
+    <div id="pdfScroll"><div id="pdfStage"><div id="pdfInner"><canvas id="pdfCanvas"></canvas><div id="pdfOverlay"></div></div></div></div>
+  </section>
+  <div id="split"></div>
+  <section class="pane" id="rightPane">
+    <div class="rhead">
+      <div class="tabs"><button id="tabForm" class="on">Drake W-2 screen</button><button id="tabLive">Live Drake (view only)</button></div>
+      <button class="btn on" id="hlBtn" title="Colour fields by status. Turn off to see the plain Drake look.">Highlights</button>
+      <button class="btn ghost" id="resetBtn" title="Discard edits and confirmations and take every value from the PDF again">↺ Reset to PDF</button>
+      <button class="btn" id="confirmAllBtn" title="Confirm every value that is valid and has no warning. Values with a warning must be confirmed one by one.">✓ Confirm all valid</button>
+      <button class="btn" id="linkBtn" title="Read the real Drake Screen W2 and link every field on this form to its Drake field, so it can be sent">🔗 Link Drake fields</button>
+      <span class="counts" id="counts"></span>
+      <div class="legend" style="margin-left:auto"><span><i style="background:#34a853"></i>matched</span><span><i style="background:#15803d;border-radius:50%"></i>confirmed</span><span><i style="background:#2f5bea"></i>edited</span><span><i style="background:#e8a317"></i>missing / check</span><span><i style="background:#dc2626"></i>invalid</span></div>
+    </div>
+    <div class="client" id="clientBar">
+      <span><b>Return</b> — Drake opens this taxpayer before filling Screen W2:</span>
+      <span>SSN <span class="cf" data-k="ssn"><input style="width:96px" spellcheck="false"></span><span class="cfm" data-cfm="ssn" title="Confirm"></span></span>
+      <span>Name <span class="cf" data-k="ename"><input style="width:230px" spellcheck="false"></span><span class="cfm" data-cfm="ename" title="Confirm"></span></span>
+    </div>
+    <div class="issues" id="issues"></div>
+    <div id="formScroll"><div id="dkWrap"><div id="dk"></div></div></div>
+    <div id="liveWrap" hidden><span class="vonly">View only · values are entered with “Send to Drake”</span><img id="liveImg" alt=""><div id="liveMsg"></div></div>
+  </section>
+</main>
+
+<svg id="arrows"><defs><marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f5bea" stroke="none"/></marker></defs><g id="arrowG"></g></svg>
+<div class="mlabel" id="labA"></div><div class="mlabel" id="labB"></div><div class="toast" id="toast"></div>
+<div class="scrim" id="scrim"><div class="modal">
+  <div class="mhead"><h3 id="mTitle">Send to Drake</h3><span class="sub" id="mSub"></span><button class="btn ghost" style="margin-left:auto" id="mClose">✕</button></div>
+  <div class="mbody" id="mBody"></div><div class="mfoot" id="mFoot"></div>
+</div></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = document.querySelector('script[src*="cdnjs"]') ? "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js" : "/static/vendor/pdfjs/pdf.worker.min.js";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isBlank = v => v === '' || v === null || v === undefined;
+
+/* =====================================================================================
+   1. Fields. id = Drake automation id (sent to Drake). Fields without an id are shown and
+      editable but kept for reference (their Drake ids are not known yet).
+   ===================================================================================== */
+const STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY AS GU MP PR VI'.split(' ');
+const CODES12 = 'A B C D E F G H J K L M N P Q R S T V W Y Z AA BB DD EE FF GG HH II'.split(' ');
+const F = {
+  ssn:{id:'__client_ssn', label:'Taxpayer SSN', type:'ssn', pdf:'employee_ssn', req:true},
+  ename:{id:'__client_name', label:'Taxpayer name', type:'name', pdf:'employee_name'},
+  ts:{id:'Dropdown_1', label:'TS', type:'ts', fixed:'T', opts:['','T','S'], req:true},
+  f:{label:'F', type:'text'}, stt:{label:'Special tax treatment', type:'opt', opts:['']},
+  ein:{id:'Textbox_4', label:'Employer EIN', type:'ein', pdf:'employer_ein', box:'b', req:true},
+  ername:{id:'Textbox_5', label:'Employer name', type:'text', pdf:'employer_name', box:'c', req:true},
+  ernc:{label:'Employer name cont.', type:'text', box:'c'},
+  erst:{id:'Textbox_7', label:'Employer street', type:'text', pdf:'employer_street', box:'c'},
+  ercity:{id:'Textbox_8', label:'Employer city', type:'text', pdf:'employer_city', box:'c'},
+  erstate:{id:'Dropdown_9', label:'Employer state', type:'state', pdf:'employer_state', box:'c', opts:['',...STATES]},
+  erzip:{id:'Textbox_10', label:'Employer ZIP', type:'zip', pdf:'employer_zip', box:'c'},
+  erprov:{label:'Employer province/state', type:'dis'}, ercountry:{label:'Employer country', type:'dis'}, erpostal:{label:'Employer postal code', type:'dis'},
+  eefirst:{label:'Employee first name', type:'text', ghost:'first', pdf:'employee_name', note:'Fill only if different from Screen 1'},
+  eelast:{label:'Employee last name', type:'text', ghost:'last', pdf:'employee_name', note:'Fill only if different from Screen 1'},
+  eest:{label:'Employee street', type:'text', ghost:'v', pdf:'employee_street', note:'Fill only if different from Screen 1'},
+  eecity:{label:'Employee city', type:'text', ghost:'v', pdf:'employee_city', note:'Fill only if different from Screen 1'},
+  eestate:{label:'Employee state', type:'state', ghost:'v', pdf:'employee_state', opts:['',...STATES], note:'Fill only if different from Screen 1'},
+  eezip:{label:'Employee ZIP', type:'zip', ghost:'v', pdf:'employee_zip', note:'Fill only if different from Screen 1'},
+  eeprov:{label:'Employee province/state', type:'dis'}, eecountry:{label:'Employee country', type:'dis'}, eepostal:{label:'Employee postal code', type:'dis'},
+  b1:{id:'Textbox_23', label:'Wages, tips', type:'money', pdf:'box1_wages', box:'1', req:true},
+  b2:{id:'Textbox_24', label:'Federal tax w/h', type:'money', pdf:'box2_fed_withheld', box:'2', req:true},
+  b3:{id:'Textbox_25', label:'Soc. Sec. wages', type:'money', pdf:'box3_ss_wages', box:'3'},
+  b4:{id:'Textbox_26', label:'Soc. Sec. w/h', type:'money', pdf:'box4_ss_tax', box:'4'},
+  b5:{id:'Textbox_27', label:'Medicare wages', type:'money', pdf:'box5_medicare_wages', box:'5'},
+  b6:{id:'Textbox_28', label:'Medicare tax w/h', type:'money', pdf:'box6_medicare_tax', box:'6'},
+  b7:{label:'Soc. Sec. tips', type:'money', box:'7'}, b8:{label:'Allocated tips', type:'money', box:'8'},
+  b9:{label:'Box 9', type:'dis', box:'9'}, b10:{label:'Dep. care benefit', type:'money', box:'10'}, b11:{label:'Nonqualified plan', type:'money', box:'11'},
+  stat:{label:'Statutory employee', type:'bool', box:'13'},
+  ret:{id:'CheckboxTextRight_47', label:'Retirement plan', type:'bool', pdf:'box13_retirement_plan', box:'13'},
+  sick:{label:'Sick pay', type:'bool', box:'13'},
+  altered:{label:'W-2 altered or handwritten (nonstandard)', type:'bool'}, corrected:{label:'Corrected W-2', type:'bool'},
+  noupd:{label:'Do not update to 2026', type:'bool'}, agent:{label:'Agent for employer', type:'bool'},
+  itin:{label:'TIN from Form W-2 (ITIN spouse)', type:'text'},
+};
+['a','b','c','d'].forEach((r,i)=>{
+  F['c12'+r] = {label:`Box 12${r} code`, type:'code12', box:'12'+r, opts:['',...CODES12], ...(i===0?{id:'Dropdown_34', pdf:'box12a_code'}:i===1?{id:'Dropdown_37', pdf:'box12b_code'}:{})};
+  F['a12'+r] = {label:`Box 12${r} amount`, type:'money', box:'12'+r, ...(i===0?{id:'Textbox_35', pdf:'box12a_amount'}:i===1?{id:'Textbox_38', pdf:'box12b_amount'}:{})};
+  F['y12'+r] = {label:`Box 12${r} year`, type:'year', box:'12'+r};
+});
+[1,2,3,4].forEach(i=>{
+  F['o14a'+i] = {label:`Box 14 other (${i}) description`, type:'text', box:'14'};
+  F['o14b'+i] = {label:`Box 14 other (${i}) amount`, type:'money', box:'14'};
+  F['st'+i]  = {label:`Box 15 state (row ${i})`, type:'state', box:'15', opts:['',...STATES], ...(i===1?{id:'Dropdown_57'}:{})};
+  F['sid'+i] = {label:`Box 15 employer state ID (row ${i})`, type:'text', box:'15'};
+  F['sw'+i]  = {label:`Box 16 state wages (row ${i})`, type:'money', box:'16', ...(i===1?{id:'Textbox_59'}:{})};
+  F['stx'+i] = {label:`Box 17 state tax (row ${i})`, type:'money', box:'17', ...(i===1?{id:'Textbox_60'}:{})};
+  F['lw'+i]  = {label:`Box 18 local wages (row ${i})`, type:'money', box:'18'};
+  F['ltx'+i] = {label:`Box 19 local tax (row ${i})`, type:'money', box:'19'};
+  F['loc'+i] = {label:`Box 20 locality (row ${i})`, type:'opt', box:'20', opts:['']};
+});
+const FIELDS = Object.entries(F).map(([key,v])=>({key, ...v, sendable: !!v.id, core: !!v.id}));   // core = ids the automation already knew
+const byK = Object.fromEntries(FIELDS.map(f=>[f.key,f]));
+
+/* =====================================================================================
+   2. Layout — positions measured from the Drake Tax 2025 Screen W2 screenshot (940 × 657).
+      [key, kind, x, y, width]   kind: in = text box · cb = drop-down · ck = check box ·
+      dis = "<Click to Access>" box · cbd = disabled drop-down · ro = grey read-only box
+   ===================================================================================== */
+const BLUE = new Set(['ein','ername','erst','ercity','erstate','erzip']);     // Drake shows these blue until filled
+const BOXES = [
+  ['ts','cb',39,79,43],['f','in',108,79,19],['stt','cb',306,79,44],
+  ['ein','in',133,122,90],['ername','in',133,141,314],['ernc','in',133,160,314],['erst','in',133,178,314],['ercity','in',133,196,197],
+  ['erstate','cb',133,230,54],['erzip','in',209,230,90],['erprov','dis',133,266,198],['ercountry','cbd',352,266,53],['erpostal','ro',427,266,80],
+  ['eefirst','in',133,324,135],['eelast','in',321,324,180],['eest','in',133,342,314],['eecity','in',133,360,197],
+  ['eestate','cb',133,395,55],['eezip','in',209,395,90],['eeprov','dis',133,426,198],['eecountry','cbd',352,426,53],['eepostal','ro',427,426,80],
+  ['b1','in',550,118,91],['b2','in',715,118,90],['b3','in',550,156,91],['b4','in',715,156,90],
+  ['b5','in',550,195,91],['b6','in',715,195,90],['b7','in',550,234,91],['b8','in',715,234,90],
+  ['b9','ro',550,273,142],['b10','in',715,274,90],['b11','in',550,323,91],
+  ['stat','ck',551,352],['ret','ck',551,366],['sick','ck',551,380],
+  ['altered','ck',12,572],['corrected','ck',371,572],['noupd','ck',487,572],['agent','ck',716,568],
+  ['itin','in',663,614,99],
+];
+['a','b','c','d'].forEach((r,i)=>{ const y=322+i*18; BOXES.push(['c12'+r,'cb',715,y,55],['a12'+r,'in',776,y,90],['y12'+r,'in',874,y,37]); });
+[403,421,439,458].forEach((y,i)=>BOXES.push(['o14a'+(i+1),'in',622,y,73],['o14b'+(i+1),'in',715,y,90]));
+[496,515,533,551].forEach((y,i)=>{ const n=i+1; BOXES.push(['st'+n,'cb',12,y,55],['sid'+n,'in',83,y,144],['sw'+n,'in',253,y,90],['stx'+n,'in',370,y,90],['lw'+n,'in',485,y,91],['ltx'+n,'in',599,y,90],['loc'+n,'cb',715,y,110]); });
+
+// [text, x, y, class, dotted-leader end x]
+const TEXT = [
+  ['Form W-2 - Wage and Tax Statement',16,55,'h1'],
+  ['TS',16,81,'ts'],['F',90,81,''],['Special tax treatment',152,82,''],
+  ['EIN',23,127,'dots',126],['Name',23,145,'dots',126],['Name cont',23,164,'dots',126],['Street',23,182,'dots',126],['City',23,200,'dots',126],
+  ['U.S.ONLY',23,218,'b'],['State',131,215,''],['ZIP',207,215,''],
+  ['Foreign ONLY',23,252,'b'],['Province/state',131,252,''],['Country',351,252,''],['Postal code',423,252,''],
+  ['Name:',23,329,''],['First',71,328,'dots',122],['Last',269,329,'dots',311],['Street',23,347,'dots',122],['City',23,365,'dots',122],
+  ['U.S. ONLY',23,380,'b'],['State',131,380,''],['ZIP',207,380,''],
+  ['Foreign ONLY',23,413,'b'],['Province/state',131,413,''],['Country',350,414,''],['Postal code',423,413,''],
+  ['=',125,327,'red'],['=',314,327,'red'],['=',125,345,'red'],['=',125,363,'red'],['=',125,398,'red'],['=',201,398,'red'],['=',125,429,'red'],['=',343,429,'red'],['=',419,429,'red'],
+  ['1',525,104,'b'],['Wages, tips',550,104,''],['2',692,104,'b'],['Federal tax w/h',713,104,''],
+  ['3',525,141,'b'],['Soc. Sec. wages',549,141,''],['4',691,141,'b'],['Soc. Sec. w/h',713,141,''],
+  ['5',525,180,'b'],['Medicare wages',549,180,''],['6',691,180,'b'],['Medicare tax w/h',713,181,''],
+  ['7',525,219,'b'],['Soc. Sec. tips',549,220,''],['8',691,219,'b'],['Allocated tips',713,220,''],
+  ['9',524,259,'b'],['10',692,259,'b'],['Dep. care benefit',713,259,''],['Form 2441',826,274,'lnk'],['Form 8880',826,294,'lnk'],
+  ['11',526,308,'b'],['Nonqualified  plan',549,308,''],['12',692,308,'b'],['Code',713,308,''],['Amount',774,308,''],['Year',873,308,''],
+  ['13',526,351,'b'],['Statutory employee',565,351,''],['Retirement plan',565,366,''],['Sick pay',565,379,''],
+  ['14',526,401,'b'],['Other',549,401,''],['SEHI',551,416,'lnk'],['8889',551,431,'lnk'],['QSEHRA',824,401,'lnk'],
+  ['Video: Entering Multiple-State W2s',702,30,'lnk'],
+  ['15',11,482,'b'],['ST',35,482,''],["Employer's State ID Number",82,482,''],['16',251,482,'b'],['State Wages',270,482,''],
+  ['17',368,482,'b'],['State Tax',385,482,''],['18',484,482,'b'],['Local Wages',502,482,''],['19',601,482,'b'],['Local Tax',621,482,''],
+  ['20',713,482,'b'],['Locality',735,482,''],
+  ['W-2 altered or handwritten (nonstandard)',28,573,''],['Corrected W-2',386,573,''],['Do not update to 2026',511,573,''],['Agent for employer',730,570,''],
+  ['If either spouse has an ITIN on screen 1, enter the TIN from Form W-2',16,618,'dots',656],
+  ['IN',723,66,'lnk'],['NJ',753,66,'lnk'],['ND',784,66,'lnk'],['NY',813,66,'lnk'],['PA',843,66,'lnk'],
+];
+
+/* Fields linked with "Link Drake fields" become sendable with the Drake id that was found on Screen W2 */
+function applyFieldIds(ids){
+  for(const [k, spec] of Object.entries(ids || {})){
+    const f = byK[k]; if(!f || f.core || !spec || !spec.aid) continue;
+    f.id = spec.aid; f.sendable = true; f.linked = spec;
+  }
+}
+function buildDrakeScreen(){
+  let h = '';
+  h += `<div class="tab sel" style="left:0;width:31px">W-2</div><div class="tab" style="left:30px;width:112px">Additional Entries</div><div class="tab" style="left:141px;width:36px">Ohio</div>`;
+  h += `<div class="tabline"></div><div class="tbtn">Import W2</div><div class="bottomline"></div>`;
+  h += `<div class="frame" style="left:12px;top:110px;width:500px;height:179px"></div><div class="lg" style="left:21px;top:103px">Employer Information</div>`;
+  h += `<div class="frame" style="left:12px;top:310px;width:500px;height:143px"></div><div class="lg" style="left:21px;top:303px">Employee Name and Address (if different from screen 1)</div>`;
+  h += `<div class="frame" style="left:9px;top:607px;width:770px;height:29px"></div>`;
+  h += `<div class="frame" style="left:695px;top:56px;width:178px;height:27px"></div><div class="lg" style="left:704px;top:49px">State Information</div>`;
+  h += `<svg class="book" width="16" height="12" viewBox="0 0 16 12"><path d="M8 2.5C6 1 3.5.8 1 1.5v9c2.5-.7 5-.5 7 1 2-1.5 4.5-1.7 7-1v-9C12.5.8 10 1 8 2.5zm0 0v9" fill="none" stroke="#333" stroke-width="1"/></svg>`;
+  for(const [t,x,y,cls,end] of TEXT) h += `<span class="t ${cls}" style="left:${x}px;top:${y}px;${end?`width:${end-x}px;`:''}"${cls==='lnk'?' title="Opens a Drake window — use it in Drake itself"':''}>${esc(t)}</span>`;
+  for(const [k,kind,x,y,w] of BOXES){
+    const f = byK[k];
+    if(kind==='ck'){ h += `<span class="ck" data-k="${k}" style="left:${x}px;top:${y}px"><input type="checkbox"></span>`; continue; }
+    let ctl;
+    if(kind==='cb') ctl = `<select>${(f.opts||['']).map(o=>`<option value="${o}">${o}</option>`).join('')}</select>`;
+    else if(kind==='cbd') ctl = `<select disabled tabindex="-1"><option></option></select>`;
+    else if(kind==='dis') ctl = `<input readonly tabindex="-1" value="<Click to Access>">`;
+    else if(kind==='ro') ctl = `<input readonly tabindex="-1">`;
+    else ctl = `<input spellcheck="false" autocomplete="off" class="${f.type==='money'?'amt':''}" maxlength="${f.type==='year'?4:60}">`;
+    const cls = (kind==='dis'||kind==='cbd') ? ' dis' : kind==='ro' ? ' ro' : '';
+    h += `<span class="c${cls}${BLUE.has(k)?' blue':''}" data-k="${k}" style="left:${x}px;top:${y}px;width:${w}px">${ctl}</span>`;
+    if(f.sendable) h += `<span class="cfm" data-cfm="${k}" style="left:${x+w-7}px;top:${y-6}px" title="Confirm this value"></span>`;
+  }
+  for(const [k,kind,x,y] of BOXES) if(kind==='ck' && byK[k].sendable) h += `<span class="cfm" data-cfm="${k}" style="left:${x+9}px;top:${y-8}px" title="Confirm this value"></span>`;
+  $('#dk').innerHTML = h;
+  $('#dk').querySelectorAll('.t.lnk').forEach(a=>a.onclick=()=>toast('That link opens a Drake window — use it in Drake itself.'));
+  $('#dk').querySelectorAll('.tab:not(.sel),.tbtn').forEach(a=>a.onclick=()=>toast('Only the W-2 tab is reproduced here.'));
+  bindInputs($('#dk')); bindInputs($('#clientBar'));
+  document.querySelectorAll('[data-cfm]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); toggleConfirm(b.dataset.cfm); });
+}
+
+/* =====================================================================================
+   3. State + helpers
+   ===================================================================================== */
+const S = { w2s:[], w2:null, pdfFields:[], byKey:{}, mapping:{}, pdf:null, page:1, zoom:1, boxes:{},
+  form:{}, results:{}, issues:{}, ghosts:{}, tab:'form', mode:'A', drakeApi:null, statusT:null, hover:null,
+  confirmed:{},      // fieldKey -> true once the user confirms the value; only these are sent to Drake
+  localMap:{},       // reference-only fields mapped by drag-and-drop: fieldKey -> pdfKey (null = cleared)
+  fit:'form', pick:null };
+const store = { get(k,d){ try{ const v=localStorage.getItem('w2map.'+k); return v===null?d:v; }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem('w2map.'+k,v); }catch(e){} } };
+async function api(url, opts={}){
+  try{ const r = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opts});
+    let j; try{ j = await r.json(); }catch(e){ j = {success:false, error:`Server returned HTTP ${r.status}`}; }
+    if(j && typeof j==='object'){ j.httpStatus = r.status; if(r.status===404 && j.success!==true) j.notFound = true; }
+    return j;
+  }catch(e){ return {success:false, offline:true, error:'Cannot reach the app server ('+e.message+'). Is python app.py running?'}; }
+}
+function toast(msg, ms=2800){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>t.style.display='none', ms); }
+const pdfName = f => 'Box '+f.box+' · '+f.label;
+const ctlOf = k => document.querySelector(`[data-k="${k}"] input, [data-k="${k}"] select`);
+const wrapOf = k => document.querySelector(`[data-k="${k}"]`);
+
+/* =====================================================================================
+   4. Values: PDF → form, formatted the way Drake shows them
+   ===================================================================================== */
+const MONEY = v => { const n = parseFloat(String(v).replace(/[^\d.\-]/g,'')); return isNaN(n) ? '' : n.toFixed(2); };
+function drakeFormat(type, v){
+  if(v===true || v===false) return v;
+  const s = isBlank(v) ? '' : String(v).trim(); if(!s) return '';
+  if(type==='money') return MONEY(s);
+  if(type==='ssn' || type==='ein') return s.replace(/\D/g,'');
+  if(type==='zip') return s.replace(/[^\d-]/g,'');
+  return s.toUpperCase();
+}
+function normalizeTyped(type, raw){
+  const t = String(raw ?? '').trim().toUpperCase(); if(!t) return '';
+  if(type==='money') return /^\(?-?\$?[\d,]*\.?\d*\)?$/.test(t) && /\d/.test(t) ? ((t.startsWith('(')||t.startsWith('-'))?'-':'') + MONEY(t.replace(/[()\-]/g,'')) : t;
+  if(type==='ssn' || type==='ein' || type==='zip'){ const d = t.replace(/[\s-]/g,''); return /^\d+$/.test(d) ? (type==='zip' && d.length===9 ? d.slice(0,5)+'-'+d.slice(5) : d) : t; }
+  return t;
+}
+function pdfKeyFor(f){
+  if(f.sendable){ const m = S.mapping[f.id]; if(m && m.pdf) return m.pdf; if(m && 'const' in m) return null; if(m===null) return null; }
+  else if(f.key in S.localMap) return S.localMap[f.key];
+  return f.pdf || null;
+}
+function splitName(n){ const p = String(n||'').trim().split(/\s+/); if(p.length<2) return {first:p[0]||'', last:''}; return {first:p.slice(0,-1).join(' '), last:p[p.length-1]}; }
+function fillFromPdf(){
+  S.ghosts = {}; S.confirmed = {};
+  for(const f of FIELDS){
+    if(f.type==='dis') continue;
+    const m = f.sendable ? S.mapping[f.id] : null;
+    if(f.fixed || (m && 'const' in m)){ S.form[f.key] = {value: drakeFormat(f.type, (m && m.const) || f.fixed), origin:'fixed'}; continue; }
+    const k = pdfKeyFor(f), pf = k && S.byKey[k];
+    if(f.ghost && !(f.key in S.localMap)){            // "if different from Screen 1": show the PDF value as a hint, leave the field empty
+      let g = pf ? pf.value : ''; if(f.ghost==='first') g = splitName(g).first; if(f.ghost==='last') g = splitName(g).last;
+      S.ghosts[f.key] = drakeFormat(f.type, g); S.form[f.key] = {value:'', origin:'blank', pdfKey:k}; continue;
+    }
+    const v = pf ? drakeFormat(f.type, pf.value) : (f.type==='bool' ? false : '');
+    S.form[f.key] = {value:v, origin: pf && !isBlank(pf.value) && pf.value!==false ? 'pdf' : 'blank', pdfKey:k || null};
+  }
+  renderValues(); validateAll();
+}
+function renderValues(){
+  for(const f of FIELDS){
+    const c = ctlOf(f.key); if(!c || f.type==='dis' || c.readOnly) continue;
+    const v = S.form[f.key] ? S.form[f.key].value : '';
+    if(f.type==='bool') c.checked = !!v;
+    else { if(c.tagName==='SELECT' && !isBlank(v) && ![...c.options].some(o=>o.value===v)) c.add(new Option(v,v)); c.value = isBlank(v) ? '' : v; }
+    if(c.tagName==='INPUT') c.placeholder = S.ghosts[f.key] || '';
+    const w = wrapOf(f.key); if(w && BLUE.has(f.key)) w.classList.toggle('blue', isBlank(v));
+  }
+}
+function bindInputs(root){
+  root.querySelectorAll('[data-k]').forEach(w=>{
+    const k = w.dataset.k, f = byK[k], c = w.querySelector('input,select'); if(!c || !f || w.dataset.bound) return;
+    w.dataset.bound = '1';
+    w.addEventListener('mouseenter', ()=>hoverForm(k, w)); w.addEventListener('mouseleave', clearHover);
+    if(c.readOnly || c.disabled) return;
+    const commit = (byUser) => {
+      const v = f.type==='bool' ? c.checked : normalizeTyped(f.type, c.value);
+      if(byUser && f.sendable) S.confirmed[k] = !fmtErr(f, v);         // a value the user typed or picked is their confirmation
+      const pk = S.form[k] && S.form[k].pdfKey, pf = pk && S.byKey[pk];
+      const pdfV = f.ghost ? '' : pf ? drakeFormat(f.type, pf.value) : (f.type==='bool' ? false : '');
+      S.form[k] = {...(S.form[k]||{}), value:v, origin: String(v)===String(pdfV) ? (pf && !f.ghost && !isBlank(pdfV) ? 'pdf' : 'blank') : 'edited'};
+      delete S.results[k];
+      if(f.type!=='bool' && document.activeElement!==c) c.value = v;
+      if(BLUE.has(k)) w.classList.toggle('blue', isBlank(v));
+      validateAll();
+    };
+    c.addEventListener('change', ()=>commit(true));
+    c.addEventListener('blur', ()=>{ if(f.type!=='bool' && c.tagName==='INPUT') c.value = S.form[k].value; });
+    w.addEventListener('contextmenu', e=>{ e.preventDefault(); clearField(k); });
+    c.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); c.blur(); } });
+    c.addEventListener('focus', ()=>{ w.classList.remove('blue'); hoverForm(k, w); }, {passive:true});
+  });
+}
+
+/* =====================================================================================
+   5. Validation — formats Drake accepts + W-2 consistency checks
+   ===================================================================================== */
+const SS_WAGE_BASE_2025 = 176100;
+function fmtErr(f, v){
+  if(v===true || v===false || isBlank(v)) return '';
+  const s = String(v);
+  switch(f.type){
+    case 'money': return /^-?\d+(\.\d{1,2})?$/.test(s) ? '' : 'Enter an amount like 1234.56';
+    case 'ssn': return /^\d{9}$/.test(s) ? '' : 'SSN must be 9 digits';
+    case 'ein': return /^\d{9}$/.test(s) ? '' : 'EIN must be 9 digits';
+    case 'zip': return /^\d{5}(-?\d{4})?$/.test(s) ? '' : 'ZIP must be 5 or 9 digits';
+    case 'state': return STATES.includes(s) ? '' : 'Use a 2-letter state code';
+    case 'ts': return s==='T'||s==='S' ? '' : 'Use T (taxpayer) or S (spouse)';
+    case 'year': return /^(19|20)\d\d$/.test(s) ? '' : 'Enter a 4-digit year';
+    case 'code12': return CODES12.includes(s) ? '' : 'Not a valid Box 12 code';
+  }
+  return '';
+}
+const num = k => { const v = S.form[k] && S.form[k].value; const n = parseFloat(v); return isNaN(n) ? null : n; };
+function validateAll(){
+  const iss = {};
+  for(const f of FIELDS){
+    if(!S.form[f.key]) continue;
+    const v = S.form[f.key].value, e = fmtErr(f, v);
+    if(e) iss[f.key] = {level:'error', msg:e};
+    else if(f.req && isBlank(v)) iss[f.key] = {level:'missing', msg:'Required by Drake — not found on the PDF'};
+  }
+  const warn = (k, msg) => { if(!iss[k]) iss[k] = {level:'warn', msg}; };
+  const b1=num('b1'), b2=num('b2'), b3=num('b3'), b4=num('b4'), b5=num('b5'), b6=num('b6');
+  if(b1!==null && b2!==null && b2 > b1) warn('b2', 'Federal tax withheld is more than wages (Box 1)');
+  if(b3!==null && b3 > SS_WAGE_BASE_2025) warn('b3', `Above the 2025 social security wage base ($${SS_WAGE_BASE_2025.toLocaleString()})`);
+  if(b3!==null && b4!==null && Math.abs(b3*0.062-b4) > 1) warn('b4', `Expected about ${(b3*0.062).toFixed(2)} (6.2% of Box 3)`);
+  if(b5!==null && b3!==null && b5+0.005 < b3) warn('b5', 'Medicare wages are usually at least social security wages (Box 3)');
+  if(b5!==null && b6!==null){ const lo=b5*0.0145, hi=lo+Math.max(0,b5-200000)*0.009; if(b6<lo-1 || b6>hi+1) warn('b6', `Expected about ${lo.toFixed(2)}${hi>lo?'–'+hi.toFixed(2):''} (1.45% of Box 5${hi>lo?', + 0.9% over $200,000':''})`); }
+  ['a','b','c','d'].forEach(r=>{ const c=S.form['c12'+r].value, a=S.form['a12'+r].value;
+    if(!isBlank(c) && isBlank(a)) warn('a12'+r, 'Code entered without an amount'); if(isBlank(c) && !isBlank(a)) warn('c12'+r, 'Amount entered without a code'); });
+  for(let i=1;i<=4;i++){ const st=S.form['st'+i].value, w=S.form['sw'+i].value, t=S.form['stx'+i].value; if(isBlank(st) && (!isBlank(w)||!isBlank(t))) warn('st'+i, 'State wages or tax entered without a state'); }
+  S.issues = iss; paintForm(); paintPdf(); renderIssues();
+}
+function fieldState(k){
+  const r = S.results[k]; if(r) return r.status==='verified' ? 'sent' : (r.status==='failed'||r.status==='mismatch') ? 'failed' : null;
+  const i = S.issues[k]; if(i) return i.level;
+  const fm = S.form[k]; if(!fm) return 'none';
+  if(fm.origin==='edited') return 'edited';
+  if(fm.origin==='pdf' || fm.origin==='fixed') return 'ok';
+  return 'none';
+}
+function paintForm(){
+  for(const f of FIELDS){
+    const w = wrapOf(f.key); if(!w) continue;
+    w.classList.remove('s-ok','s-edited','s-missing','s-warn','s-error','s-sent','s-failed');
+    const st = fieldState(f.key); if(st && st!=='none') w.classList.add('s-'+st);
+    const i = S.issues[f.key], r = S.results[f.key], parts = [];
+    if(r) parts.push('Drake: '+r.message); if(i) parts.push(i.msg);
+    if(!f.sendable && f.type!=='dis') parts.push('Not linked to a Drake field yet — use “Link Drake fields”'); if(f.note) parts.push(f.note);
+    if(f.linked) parts.push('Drake field ' + f.id);
+    if(f.sendable){
+      const has = hasVal(f.key) || f.req, on = !!S.confirmed[f.key];
+      w.classList.toggle('conf', on);
+      document.querySelectorAll(`[data-cfm="${f.key}"]`).forEach(b=>{ b.classList.toggle('show', has); b.classList.toggle('on', on);
+        b.title = on ? 'Confirmed — will be sent to Drake. Click to un-confirm.' : 'Not confirmed — click to confirm this value for Drake'; });
+      parts.unshift(on ? 'Confirmed — will be sent to Drake' : (has ? 'Not confirmed yet — will NOT be sent' : ''));
+    }
+    w.title = parts.filter(Boolean).join(' · ');
+  }
+  updateCounts();
+}
+/* A field has something to send if it holds a value — for check boxes only if ticked or changed by the user,
+   so untouched boxes never overwrite what is already in Drake. */
+function hasVal(k){ const f = byK[k], fm = S.form[k]; if(!fm) return false;
+  if(f.type==='bool') return fm.value===true || fm.origin==='edited'; return !isBlank(fm.value); }
+function updateCounts(){
+  const pdfVals = S.pdfFields.filter(p=>!isBlank(p.value) && p.value!==false);
+  const matched = pdfVals.filter(p=>FIELDS.some(f=>S.form[f.key] && S.form[f.key].pdfKey===p.key && !(f.ghost && isBlank(S.form[f.key].value) && !(f.key in S.localMap)))).length;
+  const toSend = FIELDS.filter(f=>f.sendable && (hasVal(f.key) || f.req));
+  const conf = toSend.filter(f=>S.confirmed[f.key]).length;
+  const linkable = FIELDS.filter(f=>f.type!=='dis' && f.key!=='ssn' && f.key!=='ename'), linked = linkable.filter(f=>f.sendable).length;
+  $('#counts').innerHTML = `Matched <b>${matched}/${pdfVals.length}</b> · Confirmed <b>${conf}/${toSend.length}</b> · Linked to Drake <b>${linked}/${linkable.length}</b>`;
+  const n = confirmableKeys().length; $('#confirmAllBtn').textContent = n ? `✓ Confirm all valid (${n})` : '✓ All valid confirmed'; $('#confirmAllBtn').disabled = !n;
+}
+function confirmableKeys(){ return FIELDS.filter(f=>f.sendable && !S.confirmed[f.key] && hasVal(f.key) && !S.issues[f.key]).map(f=>f.key); }
+function toggleConfirm(k){
+  const f = byK[k], v = S.form[k] && S.form[k].value, i = S.issues[k];
+  if(!S.confirmed[k]){
+    if(i && (i.level==='error' || i.level==='missing')){ toast(`Fix “${f.label}” first: ${i.msg}`, 4000); return; }
+    S.confirmed[k] = true;
+  } else delete S.confirmed[k];
+  paintForm(); paintPdf();
+}
+/* ---------------- Link Drake fields (position matching against the real Screen W2) ----------------
+   The form uses Drake's own layout, so a Drake input and a form field sit at the same place.
+   Fields whose Drake id is already known are anchors: they give the scale + offset between Drake's
+   screen and this layout. Every other Drake input is then matched to the form field at that spot. */
+const KIND = {edit:'in', combo:'cb', checkbox:'ck'};
+function boxCenter(kind, x, y, w){ return kind==='ck' ? {x:x+6.5, y:y+6.5} : {x:x+w/2, y:y+9}; }
+function fitAxis(pairs){                       // least squares  design = a*drake + b
+  const n = pairs.length, sx = pairs.reduce((t,p)=>t+p[0],0), sy = pairs.reduce((t,p)=>t+p[1],0);
+  const sxx = pairs.reduce((t,p)=>t+p[0]*p[0],0), sxy = pairs.reduce((t,p)=>t+p[0]*p[1],0), den = n*sxx - sx*sx;
+  if(n < 2 || Math.abs(den) < 1e-6) return null;
+  const a = (n*sxy - sx*sy)/den; return {a, b:(sy - a*sx)/n};
+}
+function computeLinks(controls){
+  const byAid = Object.fromEntries(controls.map(c=>[c.aid, c]));
+  const anchors = [];
+  for(const [k,kind,x,y,w] of BOXES){ const f = byK[k]; if(!f.core) continue; const c = byAid[f.id]; if(!c) continue;
+    const d = boxCenter(kind,x,y,w); anchors.push({k, dx:d.x, dy:d.y, cx:c.x+c.w/2, cy:c.y+c.h/2}); }
+  const fx = fitAxis(anchors.map(a=>[a.cx,a.dx])), fy = fitAxis(anchors.map(a=>[a.cy,a.dy]));
+  if(!fx || !fy) return {error:`Only ${anchors.length} known Drake field(s) were found on the screen — need at least 2 to line up the layout. Make sure the W-2 tab of Screen W2 is showing.`};
+  const toDesign = c => ({x: fx.a*(c.x+c.w/2)+fx.b, y: fy.a*(c.y+c.h/2)+fy.b});
+  const err = Math.max(0, ...anchors.map(a=>{ const p = toDesign(byAid[byK[a.k].id]); return Math.hypot(p.x-a.dx, p.y-a.dy); }));
+  const usedAids = new Set(FIELDS.filter(f=>f.core).map(f=>f.id));
+  const pairs = [];
+  for(const c of controls){
+    if(usedAids.has(c.aid) || !KIND[c.control]) continue;
+    const p = toDesign(c);
+    for(const [k,kind,x,y,w] of BOXES){
+      const f = byK[k]; if(f.core || kind!==KIND[c.control]) continue;
+      const d = boxCenter(kind,x,y,w), dist = Math.hypot(p.x-d.x, p.y-d.y);
+      if(dist <= 10) pairs.push({k, c, dist});
+    }
+  }
+  pairs.sort((a,b)=>a.dist-b.dist);
+  const takenK = new Set(), takenA = new Set(), links = [];
+  for(const pr of pairs){ if(takenK.has(pr.k) || takenA.has(pr.c.aid)) continue; takenK.add(pr.k); takenA.add(pr.c.aid); links.push(pr); }
+  const unmatched = controls.filter(c=>!usedAids.has(c.aid) && !takenA.has(c.aid) && c.enabled !== false);
+  return {anchors: anchors.length, fitError: err, links, unmatched, total: controls.length};
+}
+async function linkDrakeFields(){
+  $('#mTitle').textContent = 'Link Drake fields'; $('#mSub').textContent = 'reads the real Drake Screen W2';
+  $('#mBody').innerHTML = '<div style="padding:30px;text-align:center;color:var(--ink2)"><span class="spinner" style="border-color:rgba(47,91,234,.25);border-top-color:#2f5bea"></span>&nbsp; Reading every field on Drake Screen W2…</div>';
+  $('#mFoot').innerHTML = ''; $('#scrim').style.display = 'flex';
+  const r = await api('/api/w2-mapping/discover-ids', {method:'POST', body:'{}'});
+  const close = `<button class="btn" style="margin-left:auto" onclick="closeModal()">Close</button>`;
+  if(r.notFound){ $('#mBody').innerHTML = '<div class="alert bad">The app server is running an older version of the code. Stop it (Ctrl+C), run <code>python app.py</code> again, reload this page and try again.</div>'; $('#mFoot').innerHTML = close; return; }
+  if(!r.success){ $('#mBody').innerHTML = `<div class="alert bad">${esc(r.error || 'Could not read Drake.')}</div><p>Open the client's return in Drake, go to Screen W2 (W-2 tab), then click <b>Link Drake fields</b> again.</p>`; $('#mFoot').innerHTML = close; return; }
+  const res = computeLinks(r.controls || []);
+  if(res.error){ $('#mBody').innerHTML = `<div class="alert bad">${esc(res.error)}</div>`; $('#mFoot').innerHTML = close; return; }
+  const good = res.fitError <= 6;
+  const rows = res.links.map(l=>{ const f = byK[l.k]; const prev = f.linked && f.linked.aid;
+    return `<tr><td><b>${esc((f.box?'Box '+f.box+' · ':'')+f.label)}</b></td><td class="v">${esc(l.c.aid)}</td><td>${esc(l.c.label||'—')}</td><td>${l.dist.toFixed(1)} px${prev && prev!==l.c.aid?` <span class="tag warn">was ${esc(prev)}</span>`:''}</td></tr>`; }).join('');
+  $('#mBody').innerHTML =
+    `<div class="alert ${good?'ok':'bad'}">Drake shows <b>${res.total}</b> inputs on Screen W2. Lined up the layout using <b>${res.anchors}</b> fields that were already linked (accuracy ${res.fitError.toFixed(1)} px${good?'':' — too low, results may be wrong'}). <b>${res.links.length}</b> more form fields were matched to Drake fields by position.</div>` +
+    `<table class="sum"><thead><tr><th>Form field</th><th>Drake field id</th><th>Drake label nearby</th><th>Position match</th></tr></thead><tbody>${rows || '<tr><td colspan="4">No new fields matched.</td></tr>'}</tbody></table>` +
+    (res.unmatched.length ? `<p style="color:var(--ink3);margin-top:10px">${res.unmatched.length} Drake input(s) had no field at the same spot on this form (for example inputs on other tabs or hidden areas): ${res.unmatched.slice(0,12).map(c=>esc(c.aid)).join(', ')}${res.unmatched.length>12?'…':''}</p>` : '');
+  $('#mFoot').innerHTML = `<span style="color:var(--ink2);font-size:12px">After saving, these fields get a ✓ mark and are sent to Drake once you confirm them.</span>
+    <div style="margin-left:auto;display:flex;gap:8px"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" id="saveLinks" ${res.links.length && good?'':'disabled'}>Save ${res.links.length} link(s)</button></div>`;
+  $('#saveLinks').onclick = async () => {
+    const ids = {}; FIELDS.filter(f=>f.linked).forEach(f=>{ ids[f.key] = f.linked; });
+    res.links.forEach(l=>{ ids[l.k] = {aid:l.c.aid, control:l.c.control, label:l.c.label||''}; });
+    const s = await api('/api/w2-mapping/field-ids', {method:'POST', body:JSON.stringify({ids})});
+    if(!s.success){ toast(s.error || 'Could not save the links', 5000); return; }
+    applyFieldIds(s.ids); buildDrakeScreen(); fitScreen(); renderValues(); validateAll(); closeModal();
+    toast(`Linked ${res.links.length} more field(s) to Drake. Confirm their values, then Send.`, 4500);
+  };
+}
+
+/* ---------------- drag-and-drop mapping ---------------- */
+function mapField(k, pk){
+  const f = byK[k], pf = S.byKey[pk]; if(!f || !pf) return;
+  if(f.sendable){ S.mapping[f.id] = {pdf:pk}; api('/api/w2-mapping/mappings',{method:'POST',body:JSON.stringify({mapping:Object.fromEntries(Object.entries(S.mapping).filter(([,v])=>v))})}); }
+  else { S.localMap[k] = pk; store.set('localmap', JSON.stringify(S.localMap)); }
+  let v = pf.value; if(f.ghost==='first') v = splitName(v).first; if(f.ghost==='last') v = splitName(v).last;
+  if(f.type==='bool') v = !!(v===true || /^(x|true|1|yes|checked)$/i.test(String(v)));
+  delete S.ghosts[k]; delete S.results[k]; delete S.confirmed[k];       // a new mapping must be reviewed and confirmed
+  S.form[k] = {value: drakeFormat(f.type, v), origin:'pdf', pdfKey:pk};
+  renderValues(); validateAll();
+  toast(`Matched ${pdfName(pf)} → ${f.label}. Check the value, then confirm it ✓`, 3500);
+}
+function clearField(k){
+  const f = byK[k]; if(!f || f.type==='dis') return;
+  if(f.sendable){ if(f.fixed) return;
+    S.mapping[f.id] = null;                                   // null = deliberately unmatched in this session
+    const m = Object.fromEntries(Object.entries(S.mapping).filter(([,v])=>v)); api('/api/w2-mapping/mappings',{method:'POST',body:JSON.stringify({mapping:m})}); }
+  else { S.localMap[k] = null; store.set('localmap', JSON.stringify(S.localMap)); }
+  delete S.confirmed[k]; delete S.results[k]; delete S.ghosts[k];
+  S.form[k] = {value: f.type==='bool' ? false : '', origin:'blank', pdfKey:null};
+  renderValues(); validateAll(); toast(`Cleared “${f.label}” and its match`);
+}
+function dropTargetAt(x, y){
+  for(const el of document.elementsFromPoint(x, y)){
+    const w = el.closest && el.closest('#dk [data-k], #clientBar [data-k]');
+    if(w && !w.classList.contains('dis') && !w.classList.contains('ro')) return w;
+  }
+  return null;
+}
+function arrowPath(x1, y1, x2, y2){ const dx = Math.max(40, Math.abs(x2-x1)*0.45); return `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`; }
+function drawLiveArrow(fromEl, x, y){
+  const r = fromEl.getBoundingClientRect();
+  $('#arrowG').innerHTML = `<path d="${arrowPath(r.right, r.top+r.height/2, x, y)}" marker-end="url(#ah)" stroke-dasharray="6 4"/>`;
+}
+function flashArrow(fromEl, toEl){
+  const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+  $('#arrowG').innerHTML = `<path d="${arrowPath(a.right, a.top+a.height/2, b.left-2, b.top+b.height/2)}" marker-end="url(#ah)"/>`;
+  const g = $('#arrowG'); g.classList.remove('fade'); clearTimeout(S.arrowT);
+  S.arrowT = setTimeout(()=>{ g.classList.add('fade'); setTimeout(()=>{ g.innerHTML=''; g.classList.remove('fade'); }, 650); }, 900);   // arrows only while mapping
+}
+function setDropHighlight(w){ document.querySelectorAll('.drop').forEach(e=>e!==w && e.classList.remove('drop')); if(w) w.classList.add('drop'); }
+function startPdfDrag(e, pk, el){
+  if(e.button!==0) return; e.preventDefault();
+  const sx=e.clientX, sy=e.clientY; let moved=false;
+  const mv = ev => {
+    if(!moved && Math.hypot(ev.clientX-sx, ev.clientY-sy) < 5) return;
+    if(!moved){ moved = true; document.body.classList.add('mapping'); clearHover(); }
+    drawLiveArrow(el, ev.clientX, ev.clientY); setDropHighlight(dropTargetAt(ev.clientX, ev.clientY));
+  };
+  const up = ev => {
+    window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
+    if(!moved){ startPick(pk, el); return; }
+    document.body.classList.remove('mapping'); setDropHighlight(null);
+    const w = dropTargetAt(ev.clientX, ev.clientY);
+    if(w){ mapField(w.dataset.k, pk); flashArrow(el, w); } else { $('#arrowG').innerHTML=''; }
+  };
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+}
+/* click a PDF value, then click the Drake field (arrow follows the mouse); Esc cancels */
+function startPick(pk, el){
+  cancelPick(); S.pick = {pk, el}; el.classList.add('picked'); document.body.classList.add('mapping'); clearHover();
+  toast(`Now click the Drake field for ${pdfName(S.byKey[pk])}  (Esc to cancel)`, 3500);
+}
+function cancelPick(){ if(!S.pick) return; S.pick.el.classList.remove('picked'); S.pick=null; document.body.classList.remove('mapping'); setDropHighlight(null); $('#arrowG').innerHTML=''; }
+document.addEventListener('pointermove', e=>{ if(S.pick){ drawLiveArrow(S.pick.el, e.clientX, e.clientY); setDropHighlight(dropTargetAt(e.clientX, e.clientY)); } });
+document.addEventListener('click', e=>{
+  if(!S.pick) return;
+  if(e.target.closest('#pdfOverlay')) return;
+  const w = dropTargetAt(e.clientX, e.clientY); const {pk, el} = S.pick;
+  e.preventDefault(); e.stopPropagation();
+  el.classList.remove('picked'); S.pick=null; document.body.classList.remove('mapping'); setDropHighlight(null);
+  if(w){ mapField(w.dataset.k, pk); flashArrow(el, w); } else $('#arrowG').innerHTML='';
+}, true);
+function renderIssues(){
+  const box = $('#issues'), open = box.classList.contains('open');
+  const name = k => (byK[k].box?'Box '+byK[k].box+' – ':'')+byK[k].label;
+  const errs = Object.entries(S.issues).filter(([,i])=>i.level==='error'||i.level==='missing'), warns = Object.entries(S.issues).filter(([,i])=>i.level==='warn');
+  const li = ([k,i]) => `<li><a href="#" data-goto="${k}">${esc(name(k))}</a>: ${esc(i.msg)}</li>`;
+  if(errs.length){ box.className='issues bad'+(open?' open':''); box.innerHTML = `<b>⚠ ${errs.length} field(s) to fix before sending</b>${warns.length?` · ${warns.length} to check`:''} <span style="opacity:.7">(click to ${open?'hide':'show'})</span>${open?`<ul>${[...errs,...warns].map(li).join('')}</ul>`:''}`; }
+  else if(warns.length){ box.className='issues warn'+(open?' open':''); box.innerHTML = `<b>All values are valid.</b> ${warns.length} value(s) worth a second look <span style="opacity:.7">(click to ${open?'hide':'show'})</span>${open?`<ul>${warns.map(li).join('')}</ul>`:''}`; }
+  else { box.className='issues ok'; box.innerHTML = '<b>✓ All values are valid</b> and pass the W-2 checks — review, then click <b>Send to Drake</b>.'; }
+  box.querySelectorAll('[data-goto]').forEach(a=>a.onclick=e=>{ e.preventDefault(); e.stopPropagation(); const c = ctlOf(a.dataset.goto); if(c){ const sc=c.closest('#formScroll'); if(sc) reveal(sc, c); c.focus({preventScroll:true}); } });
+}
+$('#issues').onclick = () => { $('#issues').classList.toggle('open'); renderIssues(); };
+
+/* =====================================================================================
+   6. PDF viewer + field boxes
+   ===================================================================================== */
+let renderTask = null;
+async function renderPage(n){
+  if(!S.pdf) return;
+  S.page = Math.min(Math.max(1,n), S.pdf.numPages); $('#pageLbl').textContent = `${S.page} / ${S.pdf.numPages}`;
+  document.querySelectorAll('#fitForm,#fitPage').forEach(b=>b.classList.toggle('on', b.id===(S.fit==='form'?'fitForm':'fitPage')));
+  const page = await S.pdf.getPage(S.page), base = page.getViewport({scale:1}), items = (await page.getTextContent()).items;
+  // area to show: the printed W-2 (text extent + margin) or the whole page
+  let box = {x:0, y:0, w:base.width, h:base.height};
+  if(S.fit==='form'){ const b = contentBox(items, base); if(b) box = b; }
+  const sc = $('#pdfScroll'), aw = sc.clientWidth - 16, ah = sc.clientHeight - 16;
+  const k = Math.max(0.3, Math.min(aw/box.w, ah/box.h) * S.zoom);
+  const vp = page.getViewport({scale:k}), dpr = window.devicePixelRatio || 1, cv = $('#pdfCanvas');
+  if(renderTask){ try{ renderTask.cancel(); }catch(e){} }
+  cv.width = Math.floor(vp.width*dpr); cv.height = Math.floor(vp.height*dpr); cv.style.width = vp.width+'px'; cv.style.height = vp.height+'px';
+  $('#pdfInner').style.width = vp.width+'px'; $('#pdfInner').style.height = vp.height+'px';
+  $('#pdfInner').style.left = (-box.x*k)+'px'; $('#pdfInner').style.top = (-box.y*k)+'px';
+  $('#pdfStage').style.width = Math.round(box.w*k)+'px'; $('#pdfStage').style.height = Math.round(box.h*k)+'px';
+  $('#pdfStage').style.marginTop = Math.max(0, (ah - box.h*k)/2)+'px';
+  renderTask = page.render({canvasContext: cv.getContext('2d'), viewport: vp, transform: dpr!==1?[dpr,0,0,dpr,0,0]:null});
+  try{ await renderTask.promise; }catch(e){ if(e && e.name==='RenderingCancelledException') return; throw e; }
+  S.boxes = {}; if(S.w2 && S.page===S.w2.page) locateFields(items, vp);
+  drawPdfBoxes();
+}
+/* bounding box of all printed text (the W-2 form), in page units, with a small margin */
+function contentBox(items, base){
+  let L=1e9,T=1e9,R=-1e9,B=-1e9;
+  for(const it of items){ if(!it.str || !it.str.trim()) continue;
+    const tx = pdfjsLib.Util.transform(base.transform, it.transform), fh = Math.hypot(tx[2], tx[3]);
+    L=Math.min(L,tx[4]); R=Math.max(R,tx[4]+it.width); T=Math.min(T,tx[5]-fh); B=Math.max(B,tx[5]+fh*0.3); }
+  if(R<=L) return null;
+  const m = 12; L=Math.max(0,L-m); T=Math.max(0,T-m); R=Math.min(base.width,R+m); B=Math.min(base.height,B+m);
+  return {x:L, y:T, w:R-L, h:B-T};
+}
+function locateFields(items, vp){
+  const chars = []; items.forEach(it=>{ if(!it.str) return; for(let i=0;i<it.str.length;i++) chars.push({ch:it.str[i], it, off:i}); chars.push({ch:' ', it:null}); });
+  let norm=''; const map=[]; for(const c of chars){ const ws=/\s/.test(c.ch); if(ws && norm.endsWith(' ')) continue; norm += ws?' ':c.ch.toLowerCase(); map.push(c); }
+  const n = s => String(s).replace(/\s+/g,' ').trim().toLowerCase();
+  const rectFor = (a,b) => { let L=1e9,T=1e9,R=-1e9,B=-1e9;
+    for(let i=a;i<b;i++){ const c=map[i]; if(!c||!c.it) continue; const tx=pdfjsLib.Util.transform(vp.transform, c.it.transform), fh=Math.hypot(tx[2],tx[3]);
+      const w=c.it.width*vp.scale, len=c.it.str.length||1, x0=tx[4]+w*c.off/len, x1=tx[4]+w*(c.off+1)/len;
+      L=Math.min(L,x0); R=Math.max(R,x1); T=Math.min(T,tx[5]-fh*0.9); B=Math.max(B,tx[5]+fh*0.22); }
+    return R>L ? {x:L-3,y:T-2,w:R-L+6,h:B-T+4} : null; };
+  for(const f of S.pdfFields){ if(!f.find) continue; const needle=n(f.find); if(!needle) continue; const at=norm.indexOf(needle); if(at<0) continue;
+    let a=at, b=at+needle.length; if(f.part){ const p=n(f.part), k=needle.indexOf(p); if(k>=0){ a=at+k; b=a+p.length; } }
+    const r=rectFor(a,b); if(r) S.boxes[f.key]=r; }
+}
+function drawPdfBoxes(){
+  const ov = $('#pdfOverlay');
+  ov.innerHTML = S.pdfFields.filter(f=>S.boxes[f.key]).map(f=>{ const r=S.boxes[f.key]; return `<div class="fx" data-pdf-key="${esc(f.key)}" style="left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px"></div>`; }).join('');
+  ov.querySelectorAll('.fx').forEach(el=>{
+    el.onmouseenter = () => hoverPdf(el.dataset.pdfKey, el); el.onmouseleave = clearHover;
+    el.onpointerdown = e => startPdfDrag(e, el.dataset.pdfKey, el);
+    el.title = 'Drag onto the matching Drake field (or click, then click the field)';
+  });
+  paintPdf();
+}
+const formKeysFor = pk => FIELDS.filter(f=>S.form[f.key] && S.form[f.key].pdfKey===pk).map(f=>f.key).sort((a,b)=>(byK[a].ghost?1:0)-(byK[b].ghost?1:0) || (byK[a].sendable?0:1)-(byK[b].sendable?0:1));
+function paintPdf(){
+  document.querySelectorAll('#pdfOverlay .fx').forEach(el=>{
+    const ks = formKeysFor(el.dataset.pdfKey), main = ks.filter(k=>!byK[k].ghost), sts = main.map(fieldState);
+    const st = !ks.length ? 'none' : !main.length ? 'ref' : sts.includes('error')||sts.includes('failed') ? 'error' : sts.includes('warn')||sts.includes('missing') ? 'warn' : sts.every(s=>s==='sent') ? 'sent' : sts.includes('edited') ? 'edited' : 'ok';
+    el.classList.toggle('picked', !!(S.pick && S.pick.pk===el.dataset.pdfKey));
+    el.className = 'fx m-'+st + (S.hover && S.hover.pdf===el.dataset.pdfKey ? ' hot' : '') + (S.pick && S.pick.pk===el.dataset.pdfKey ? ' picked' : '');
+  });
+}
+
+/* =====================================================================================
+   7. Hover link PDF ⇄ Drake screen
+   ===================================================================================== */
+const ST_TXT = {ok:'✓ extracted', edited:'✎ edited', missing:'missing', warn:'! check', error:'✕ invalid', sent:'✓ in Drake', failed:'✕ Drake rejected', none:'—'};
+const show = v => v===true ? 'Checked' : v===false ? 'Not checked' : isBlank(v) ? '—' : String(v);
+function labelFor(k, pk){
+  const f = k && byK[k], pf = pk && S.byKey[pk], st = k ? fieldState(k) : 'none', issue = k && S.issues[k], res = k && S.results[k];
+  const ghost = f && f.ghost && isBlank((S.form[k]||{}).value);
+  const dv = f ? (ghost ? `<span style="color:#9ca3af">empty — Drake uses Screen 1</span>` : `<span class="v">${esc(show((S.form[k]||{}).value))}</span>`) : '';
+  return `<div class="h">${f ? esc((f.box?'Box '+f.box+' · ':'')+f.label) : esc(pf?pdfName(pf):'')} <span class="st ${ghost?'ref':st}">${ghost?'reference':ST_TXT[st]}</span></div>
+    ${pf ? `<div class="row"><span class="k">PDF</span>${esc(pdfName(pf))}: <span class="v">${esc(show(pf.display===''?pf.value:pf.display))}</span></div>` : '<div class="row"><span class="k">PDF</span>not on this W-2</div>'}
+    ${f ? `<div class="row"><span class="k">Drake</span>${dv}${f.sendable?'':' <span style="color:#9ca3af">(not sent)</span>'}</div>` : '<div class="row"><span class="k">Drake</span>no matching field on Screen W2</div>'}
+    ${f && f.note ? `<div class="row" style="color:#93c5fd">${esc(f.note)}</div>` : ''}
+    ${issue ? `<div class="row" style="color:${issue.level==='error'?'#fca5a5':'#fcd34d'}">${esc(issue.msg)}</div>` : ''}${res ? `<div class="row" style="color:#86efac">${esc(res.message)}</div>` : ''}`;
+}
+function placeLabel(lab, rect){
+  lab.style.display='block'; const lw=lab.offsetWidth, lh=lab.offsetHeight;
+  let x=Math.min(Math.max(8,rect.left), innerWidth-lw-8), y=rect.top-lh-10, cls='above'; if(y<50){ y=rect.bottom+10; cls='below'; }
+  lab.style.left=x+'px'; lab.style.top=y+'px'; lab.className='mlabel '+cls;
+}
+/* scroll only the given container (scrollIntoView would also shift the panes themselves) */
+function reveal(sc, el){ const s=sc.getBoundingClientRect(), r=el.getBoundingClientRect();
+  const dy = (r.top<s.top+20||r.bottom>s.bottom-10) ? r.top - s.top - s.height/2 + r.height/2 : 0;
+  const dx = (r.left<s.left||r.right>s.right) ? r.left - s.left - s.width/2 + r.width/2 : 0;
+  if(dx||dy) sc.scrollBy({top:dy, left:dx, behavior:'smooth'}); }
+function markHot(){
+  document.querySelectorAll('.hot').forEach(e=>e.classList.remove('hot')); if(!S.hover) return;
+  if(S.hover.pdf) document.querySelectorAll(`#pdfOverlay [data-pdf-key="${CSS.escape(S.hover.pdf)}"]`).forEach(e=>e.classList.add('hot'));
+  (S.hover.form||[]).forEach(k=>{ const w=wrapOf(k); if(w) w.classList.add('hot'); });
+}
+function hoverPdf(pk, el){
+  if(document.body.classList.contains('mapping')) return;
+  const ks = formKeysFor(pk); S.hover = {pdf:pk, form:ks}; markHot();
+  $('#labA').innerHTML = labelFor(ks[0], pk); placeLabel($('#labA'), el.getBoundingClientRect());
+  const tgt = ks.length && S.tab==='form' && wrapOf(ks[0]);
+  if(tgt){ const sc = tgt.closest('#formScroll'); clearTimeout(S.revT); if(sc) S.revT=setTimeout(()=>reveal(sc, tgt),180); $('#labB').innerHTML = labelFor(ks[0], pk); placeLabel($('#labB'), tgt.getBoundingClientRect()); }
+  else $('#labB').style.display='none';
+}
+function hoverForm(k, w){
+  if(document.body.classList.contains('mapping')) return;
+  const pk = S.form[k] && S.form[k].pdfKey; S.hover = {pdf: pk && S.boxes[pk] ? pk : null, form:[k]}; markHot();
+  $('#labB').innerHTML = labelFor(k, pk); placeLabel($('#labB'), w.getBoundingClientRect());
+  const pb = pk && document.querySelector(`#pdfOverlay [data-pdf-key="${CSS.escape(pk)}"]`);
+  if(pb){ clearTimeout(S.revT); S.revT=setTimeout(()=>reveal($('#pdfScroll'), pb),180); $('#labA').innerHTML = labelFor(k, pk); placeLabel($('#labA'), pb.getBoundingClientRect()); }
+  else $('#labA').style.display='none';
+}
+function clearHover(){ clearTimeout(S.revT); S.hover=null; markHot(); $('#labA').style.display='none'; $('#labB').style.display='none'; }
+function repositionLabels(){
+  if(!S.hover) return;
+  const pb = S.hover.pdf && document.querySelector(`#pdfOverlay [data-pdf-key="${CSS.escape(S.hover.pdf)}"]`), fb = S.hover.form && S.hover.form[0] && wrapOf(S.hover.form[0]);
+  if(pb && $('#labA').style.display==='block') placeLabel($('#labA'), pb.getBoundingClientRect());
+  if(fb && $('#labB').style.display==='block') placeLabel($('#labB'), fb.getBoundingClientRect());
+}
+/* scale the 940 px Drake screen to the pane width (never smaller than 60 %) */
+function fitScreen(){
+  const sc = $('#formScroll'); if(!sc.clientWidth) return;
+  const z = Math.max(0.6, Math.min(1.8, (sc.clientWidth - 2) / 940));
+  $('#dk').style.transform = `scale(${z})`; $('#dkWrap').style.width = Math.floor(940*z)+'px'; $('#dkWrap').style.height = Math.floor(657*z)+'px';
+}
+
+/* =====================================================================================
+   8. Send to Drake
+   ===================================================================================== */
+/* only values the user confirmed are sent; everything else stays out of Drake */
+function sendValues(){ const v={}; FIELDS.filter(f=>f.core && S.confirmed[f.key] && (hasVal(f.key) || f.req)).forEach(f=>{ v[f.id] = S.form[f.key].value; }); return v; }
+function sendExtra(){ const x={}; FIELDS.filter(f=>f.linked && S.confirmed[f.key] && hasVal(f.key)).forEach(f=>{ x[f.id] = {value:S.form[f.key].value, type:f.type, control:f.linked.control, label:(f.box?'Box '+f.box+' ':'')+f.label}; }); return x; }
+function openSend(){
+  validateAll(); clearHover();
+  const errs = Object.entries(S.issues).filter(([k,i])=>(i.level==='error'||i.level==='missing') && (S.confirmed[k] || byK[k].req));
+  const reqOpen = FIELDS.filter(f=>f.sendable && f.req && !S.confirmed[f.key]);
+  const notConf = FIELDS.filter(f=>f.sendable && !S.confirmed[f.key] && hasVal(f.key));
+  const rows = FIELDS.filter(f=>f.sendable && S.confirmed[f.key] && (hasVal(f.key) || f.req)).map(f=>{ const st=fieldState(f.key), v=S.form[f.key].value, o=S.form[f.key].origin;
+    return `<tr><td><b>${esc((f.box?'Box '+f.box+' · ':'')+f.label)}</b></td><td class="v">${esc(show(v))}</td><td>${o==='edited'?'<span class="tag edited">edited</span>':o==='pdf'?'PDF':o==='fixed'?'fixed':'<span style="color:var(--ink3)">blank</span>'}</td>
+      <td>${st==='error'||st==='missing'?`<span class="tag error">${esc(S.issues[f.key].msg)}</span>`:st==='warn'?`<span class="tag warn">${esc(S.issues[f.key].msg)}</span>`:isBlank(v)&&v!==false?'<span style="color:var(--ink3)">skipped (blank)</span>':'<span class="tag ok">ready</span>'}</td></tr>`; }).join('');
+  $('#mTitle').textContent='Send to Drake'; $('#mSub').textContent = S.w2 ? S.w2.title : '';
+  const blocked = errs.length || reqOpen.length;
+  $('#mBody').innerHTML = (errs.length ? `<div class="alert bad">Fix ${errs.length} field(s) first — they are marked on the screen.</div>` : '') +
+    (reqOpen.length ? `<div class="alert bad">Confirm the required field(s) first: ${reqOpen.map(f=>esc(f.label)).join(', ')}.</div>` : '') +
+    (!blocked ? `<div class="alert ok">Only the <b>${FIELDS.filter(f=>f.sendable && S.confirmed[f.key] && (hasVal(f.key) || f.req)).length} confirmed value(s)</b> below will be entered on Drake Screen W2 (in the background) and read back. Drake opens the return for SSN ${esc(S.form.ssn.value)} if it isn't already open.</div>` : '') +
+    `<table class="sum"><thead><tr><th>Drake field</th><th>Value</th><th>Source</th><th>Check</th></tr></thead><tbody>${rows || '<tr><td colspan="4" style="color:var(--ink3)">Nothing confirmed yet.</td></tr>'}</tbody></table>` +
+    (notConf.length ? `<p style="color:#92400e;margin-top:12px"><b>Not confirmed — will NOT be sent:</b> ${notConf.map(f=>esc((f.box?'Box '+f.box+' ':'')+f.label)).join(', ')}</p>` : '');
+  $('#mFoot').innerHTML = `<label style="display:flex;gap:6px;align-items:center;color:var(--ink2)"><input type="checkbox" id="overwrite"> Overwrite if the open Drake W-2 already has values</label>
+    <div style="margin-left:auto;display:flex;gap:8px"><button class="btn" id="cancelBtn">Cancel</button><button class="btn primary" id="goBtn" ${blocked?'disabled':''}>Send confirmed values</button></div>`;
+  $('#cancelBtn').onclick = closeModal; $('#goBtn').onclick = doSend; $('#scrim').style.display='flex';
+}
+async function doSend(){
+  $('#goBtn').innerHTML = '<span class="spinner"></span> Entering values in Drake…'; $('#goBtn').disabled = true; $('#cancelBtn').disabled = true;
+  const r = await api('/api/w2-mapping/send', {method:'POST', body:JSON.stringify({values:sendValues(), extra:sendExtra(), overwrite:$('#overwrite').checked})});
+  if(r.notFound){ r.error = 'The app server is running an older version of the code (HTTP 404). Nothing was sent to Drake. Stop the server (Ctrl+C), run python app.py again, reload this page and send again.'; checkServerVersion(); }
+  const idToKey = Object.fromEntries(FIELDS.filter(f=>f.id).map(f=>[f.id,f.key])); S.results = {};
+  (r.results||[]).forEach(x=>{ const k=idToKey[x.drake_id]; if(k && x.status!=='skipped' && x.status!=='used') S.results[k]=x; });
+  paintForm(); paintPdf();
+  const ok = (r.results||[]).filter(x=>x.status==='verified').length, bad = (r.results||[]).filter(x=>['failed','mismatch','blocked'].includes(x.status));
+  $('#mTitle').textContent = r.success ? 'Drake updated' : 'Drake needs attention';
+  $('#mBody').innerHTML = `<div class="alert ${r.success?'ok':'bad'}">${esc(r.message||r.error||'')}</div>` +
+    (r.results ? `<p>${ok} field(s) confirmed in Drake${bad.length?`, <b>${bad.length} need attention</b>: ${bad.map(x=>esc((FIELDS.find(f=>f.id===x.drake_id)||{label:x.drake_id}).label)+' — '+esc(x.message)).join('; ')}`:''}. Each field on the screen now shows its result.</p>` : '') +
+    (r.logs && r.logs.length ? `<div class="logs">${r.logs.map(esc).join('\n')}</div>` : '');
+  $('#mFoot').innerHTML = `<button class="btn primary" style="margin-left:auto" id="doneBtn">Done</button>`; $('#doneBtn').onclick = closeModal;
+}
+function closeModal(){ $('#scrim').style.display='none'; }
+
+/* =====================================================================================
+   9. Drake status, view-only live picture, side-by-side windows
+   ===================================================================================== */
+async function checkDrake(){
+  clearTimeout(S.statusT); const r = await api('/api/drake-view/status');
+  if(r.notFound){ S.drakeApi={ok:false}; setDot('warn','App server needs a restart (python app.py)'); return; }
+  if(r.offline){ S.drakeApi={ok:false}; setDot('warn','App server not reachable'); S.statusT=setTimeout(checkDrake,10000); return; }
+  if(r.unavailable){ S.drakeApi={ok:false}; setDot('warn','Drake not available on this computer'); return; }
+  if(!r.success){ setDot('warn', r.error||'Drake status unknown'); S.statusT=setTimeout(checkDrake,10000); return; }
+  S.drakeApi={ok:true}; setDot(r.running?'on':'warn', r.running ? (r.title||'Drake Tax 2025') : 'Drake Tax 2025 is not running');
+  S.statusT = setTimeout(checkDrake, document.hidden ? 15000 : 5000);
+}
+function setDot(c,t){ $('#ldot').className='ldot '+c; $('#ltxt').textContent=t; $('#ltxt').title=t; }
+function startLiveView(){
+  const img=$('#liveImg'), msg=$('#liveMsg');
+  if(S.drakeApi && !S.drakeApi.ok){ msg.innerHTML='<div><b>Live Drake picture is not available.</b><br>'+esc($('#ltxt').textContent)+'</div>'; msg.classList.add('show'); return; }
+  msg.classList.remove('show');
+  img.onerror = () => { msg.innerHTML='<div><b>The live Drake picture stopped.</b><br><button class="btn primary" id="liveRetry" style="margin-top:10px">Retry</button></div>'; msg.classList.add('show'); $('#liveRetry').onclick=startLiveView; };
+  img.src = '/api/drake-view/stream?t='+Date.now();
+}
+function stopLiveView(){ const img=$('#liveImg'); img.onerror=null; img.removeAttribute('src'); }
+function setTab(t){
+  S.tab=t; $('#tabForm').classList.toggle('on',t==='form'); $('#tabLive').classList.toggle('on',t==='live');
+  ['#formScroll','#clientBar','#issues','#resetBtn','#hlBtn'].forEach(s=>$(s).hidden = t!=='form'); $('#liveWrap').hidden = t!=='live';
+  clearHover(); if(t==='live') startLiveView(); else { stopLiveView(); fitScreen(); }
+}
+async function setMode(m, first){
+  const prev=S.mode; S.mode=m; store.set('mode',m);
+  $('#modeA').classList.toggle('on',m==='A'); $('#modeB').classList.toggle('on',m==='B'); $('#sbsTools').hidden = m!=='B';
+  $('#tabLive').hidden = m==='B'; if(m==='B' && S.tab==='live') setTab('form');
+  if(m==='B'){ if(!S.drakeApi) await checkDrake(); if(S.drakeApi && S.drakeApi.ok) arrange(); else toast('Side-by-side needs the app running on the Drake PC', 5000); }
+  else if(prev==='B' && !first && S.drakeApi && S.drakeApi.ok) api('/api/drake-view/arrange',{method:'POST',body:JSON.stringify({mode:'restore'})});
+  setTimeout(()=>{ renderPage(S.page); fitScreen(); },60);
+}
+async function arrange(){
+  const r = await api('/api/drake-view/arrange',{method:'POST',body:JSON.stringify({mode:'side_by_side',split:0.62})});
+  toast(r.success ? 'This page is on the left, Drake on the right. Send to Drake fills it while you watch.' : (r.error||'Could not arrange windows'), 5000);
+  setTimeout(()=>{ renderPage(S.page); fitScreen(); },450);
+}
+
+/* =====================================================================================
+   10. Load + wiring
+   ===================================================================================== */
+/* Is the running server new enough? A GET on the POST-only send route returns 405 when it exists and 404 when the server predates it. */
+async function checkServerVersion(){
+  try{ const r = await fetch('/api/w2-mapping/send', {method:'OPTIONS'}); S.serverOutdated = r.status === 404; }catch(e){ S.serverOutdated = false; }
+  $('#staleBar').hidden = !S.serverOutdated; $('#sendBtn').disabled = !!S.serverOutdated;
+  if(S.serverOutdated) $('#sendBtn').title = 'Restart python app.py first — the running server does not have the send step yet';
+}
+async function init(){
+  const ids = await api('/api/w2-mapping/field-ids'); if(ids.success) applyFieldIds(ids.ids);
+  buildDrakeScreen(); fitScreen(); checkServerVersion();
+  const [src, mp] = await Promise.all([api('/api/w2-mapping/source'), api('/api/w2-mapping/mappings')]);
+  S.mapping = mp.mapping || {};
+  if(!src.success){ showPdfError(src); fillFromPdf(); return; }
+  S.w2s = src.w2s; $('#fileName').textContent = src.file; $('#fileName').title = src.path||src.file;
+  const sel=$('#w2Select'); if(S.w2s.length>1){ sel.innerHTML=S.w2s.map((w,i)=>`<option value="${i}">${esc(w.title)} · p.${w.page}</option>`).join(''); sel.hidden=false; sel.onchange=()=>selectW2(+sel.value); }
+  S.pdf = await pdfjsLib.getDocument({url:'/api/w2-mapping/pdf?t='+Date.now()}).promise;
+  await selectW2(0);
+}
+function showPdfError(src){ $('#fileName').textContent='No PDF loaded';
+  $('#pdfScroll').innerHTML = `<div style="margin:40px auto;max-width:460px;text-align:center;line-height:1.6;color:var(--ink2)"><b style="color:var(--ink)">${esc(src.error||'Could not load the PDF')}</b><br>${src.looked_in?'<span style="font-family:var(--mono);font-size:11px">'+src.looked_in.map(esc).join('<br>')+'</span><br>':''}Use <b>Upload PDF</b> to choose the tax packet.</div>`; }
+async function selectW2(i){ S.w2=S.w2s[i]; S.pdfFields=S.w2.fields; S.byKey=Object.fromEntries(S.pdfFields.map(f=>[f.key,f])); S.results={}; fillFromPdf(); await renderPage(S.w2.page); }
+
+(function splitter(){
+  const sp=$('#split'), main=$('#main'), apply=p=>main.style.setProperty('--split',p+'%'); apply(parseFloat(store.get('split4','47'))||47);
+  sp.addEventListener('pointerdown', e=>{ e.preventDefault(); sp.classList.add('drag'); sp.setPointerCapture(e.pointerId);
+    const mv=ev=>{ const r=main.getBoundingClientRect(); apply(Math.min(65,Math.max(22,(ev.clientX-r.left)/r.width*100)).toFixed(1)); fitScreen(); clearHover(); };
+    const up=()=>{ sp.classList.remove('drag'); sp.removeEventListener('pointermove',mv); sp.removeEventListener('pointerup',up); store.set('split4', main.style.getPropertyValue('--split').replace('%','')); renderPage(S.page); fitScreen(); };
+    sp.addEventListener('pointermove',mv); sp.addEventListener('pointerup',up); });
+})();
+$('#tabForm').onclick=()=>setTab('form'); $('#tabLive').onclick=()=>setTab('live');
+$('#hlBtn').onclick=()=>{ const on=document.body.classList.toggle('hl'); $('#hlBtn').classList.toggle('on',on); store.set('hl',on?'1':'0'); };
+$('#resetBtn').onclick=()=>{ S.results={}; fillFromPdf(); toast('Every value was taken from the PDF again — confirmations cleared'); };
+$('#sendBtn').onclick=openSend; $('#mClose').onclick=closeModal;
+$('#modeA').onclick=()=>{ if(S.mode!=='A') setMode('A'); }; $('#modeB').onclick=()=>{ if(S.mode!=='B') setMode('B'); else arrange(); };
+$('#arrangeBtn').onclick=arrange;
+$('#restoreBtn').onclick=async()=>{ const r=await api('/api/drake-view/arrange',{method:'POST',body:JSON.stringify({mode:'restore'})}); toast(r.success?'Window sizes restored':(r.error||'Could not restore')); };
+$('#zoomIn').onclick=()=>{ S.zoom=Math.min(3,S.zoom+0.2); renderPage(S.page); }; $('#zoomOut').onclick=()=>{ S.zoom=Math.max(0.5,S.zoom-0.2); renderPage(S.page); };
+$('#prevPage').onclick=()=>renderPage(S.page-1); $('#nextPage').onclick=()=>renderPage(S.page+1);
+$('#fitForm').onclick=()=>{ S.fit='form'; S.zoom=1; store.set('fit','form'); renderPage(S.w2 ? S.w2.page : S.page); };
+$('#fitPage').onclick=()=>{ S.fit='page'; S.zoom=1; store.set('fit','page'); renderPage(S.page); };
+$('#linkBtn').onclick=linkDrakeFields;
+$('#confirmAllBtn').onclick=()=>{ const ks = confirmableKeys(); ks.forEach(k=>S.confirmed[k]=true); paintForm(); paintPdf();
+  const left = FIELDS.filter(f=>f.sendable && !S.confirmed[f.key] && hasVal(f.key)).length;
+  toast(`Confirmed ${ks.length} value(s).` + (left ? ` ${left} with a warning still need your individual check.` : ''), 4000); };
+$('#fileInput').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; const fd=new FormData(); fd.append('file',f); $('#fileName').textContent='Uploading…';
+  let r; try{ r=await (await fetch('/api/w2-mapping/upload',{method:'POST',body:fd})).json(); }catch(err){ r={success:false,error:'Upload failed'}; }
+  if(!r.success){ toast(r.error||'Upload failed'); $('#fileName').textContent='Upload failed'; return; } location.reload(); };
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ if(S.pick) cancelPick(); else if($('#scrim').style.display==='flex') closeModal(); } });
+['#pdfScroll','#formScroll'].forEach(s=>$(s).addEventListener('scroll', ()=>requestAnimationFrame(repositionLabels), {passive:true}));
+window.addEventListener('resize', ()=>{ clearTimeout(window._rz); window._rz=setTimeout(()=>{ renderPage(S.page); fitScreen(); },150); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && S.drakeApi && S.drakeApi.ok) checkDrake(); });
+
+try{ S.localMap = JSON.parse(store.get('localmap','{}')) || {}; }catch(e){ S.localMap = {}; }
+S.fit = store.get('fit','form');
+if(store.get('hl','1')==='0'){ document.body.classList.remove('hl'); $('#hlBtn').classList.remove('on'); }
+const startMode = store.get('mode','A')==='B' ? 'B' : 'A';
+init().then(async()=>{ await checkDrake(); setMode(startMode, true); }).catch(err=>{ console.error(err); showPdfError({error:'Could not load the page: '+err.message}); });
+</script>
+</body>
+</html>
